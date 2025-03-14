@@ -11,7 +11,7 @@ function Get-ProcSignatureCompareToEnterprise{
 
 # Define variables
 $apiToken = ''
-$baseUrl = 'https://yoursite.sentinelone.net/web/api/v2.1'
+$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
 $query = "src.process.publisher = '$srcProcPublisher' | columns src.process.publisher, src.process.signedStatus, src.process.verifiedStatus, endpoint.name  | group endpointCount = estimate_distinct (endpoint.name) by src.process.signedStatus, src.process.verifiedStatus | sort -endpointCount | limit 100"
 #$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
 $pollingInterval = 1 # Interval in seconds to check the status of the query

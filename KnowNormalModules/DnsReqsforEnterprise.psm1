@@ -13,7 +13,7 @@ function Get-DnsReqsforEnterprise{
 
 # Define variables
 $apiToken = ''
-$baseUrl = 'https://yoursite.sentinelone.net/web/api/v2.1'
+$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
 $query = "endpoint.os = '$os' and src.process.name = '$srcProcName' and not(endpoint.name = '$hostName') | columns event.dns.request  | group DnsReqCount = count (event.dns.request) by event.dns.request  | sort -DnsReqCount | limit 1000"
 #$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
 $pollingInterval = 1 # Interval in seconds to check the status of the query

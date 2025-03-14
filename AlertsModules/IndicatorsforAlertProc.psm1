@@ -12,7 +12,7 @@ function Get-IndicatorsforAlertProc{
 
 # Define variables
 $apiToken = ''
-$baseUrl = 'https://yoursite.sentinelone.net/web/api/v2.1'
+$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
 $query = "endpoint.name = '$hostName' and src.process.name = '$srcProcName' | columns indicator.name  | group indicatorCount = count (indicator.name) by indicator.name | sort -indicatorCount | limit 100"
 #$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
 $pollingInterval = 1 # Interval in seconds to check the status of the query

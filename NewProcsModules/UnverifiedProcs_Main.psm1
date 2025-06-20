@@ -7,13 +7,12 @@ Import-Module -Name ".\NewProcsModules\S1PullFile.psm1"
 Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 
 # Define variables
-$apiToken = ''
-$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
+$apiToken = 'eyJraWQiOiJ1cy1lYXN0LTEtcHJvZC0wIiwiYWxnIjoiRVMyNTYifQ.eyJzdWIiOiJpYW4ubm9ydG9uQGVxdWlmYXguY29tIiwiaXNzIjoiYXV0aG4tdXMtZWFzdC0xLXByb2QiLCJkZXBsb3ltZW50X2lkIjoiNjc5NDgiLCJ0eXBlIjoidXNlciIsImV4cCI6MTc1MDUxMzA0NiwiaWF0IjoxNzQ3OTIxMDQ2LCJqdGkiOiJjZjQ3N2YzYy03ZWM1LTRkMmYtOTM0OC00NzVmZTA1NDRjZTgifQ.lFzgjVpAnajoQoRVNk5OVgAkwhNe765EsAT9g93TB4Ron6Z8bhFhx-uVQ9_ON5__WYitnML6sFodzuZx39R1Xw'
+$baseUrl = 'https://site.sentinelone.net/web/api/v2.1'
 $queryCreateUrl = "$baseUrl/dv/events/pq"
 
 $pollingInterval = 1 # Interval in seconds to check the status of the query
 $queryDays = -1 #How far back the query checks for new processes
-$global:agentIdsFromFilePulls = New-Object System.Collections.ArrayList
 
 # Set up headers for authentication and content type
 $headers = @{
@@ -45,19 +44,9 @@ foreach ($newProc in $filteredUnverifiedProcsRecent){
     $newHash = $newProc.value[2]
     [bool]$pullFileFromS1 = $false
 
-    $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -ErrorAction silentlycontinue
+    $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unverifiedProcsBaseline.json" -signatureStatus "unverified" -ErrorAction silentlycontinue
     if ($pullFileFromS1 -eq $false){
         $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash
-
-        if ($agentId[-1] -match "^\d") {
-        $agentIdsFromFilePulls.Add($agentId[-1])
-        #$agentIdsFromFilePulls = $agentIdsFromFilePulls | select -Unique #Deduplicate
-        } else {
-            Write-Host "Didn't start with regex digit"
-        }
-
-        Get-S1Activities -headers $headers -baseUrl $baseUrl -ErrorAction silentlycontinue
-
     } else {
         continue
     }

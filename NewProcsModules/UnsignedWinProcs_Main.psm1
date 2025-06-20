@@ -8,13 +8,12 @@ Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 
 # Define variables
 $apiToken = ''
-$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
 $queryCreateUrl = "$baseUrl/dv/events/pq"
 
 $pollingInterval = 1 # Interval in seconds to check the status of the query
 $queryDays = -1 #How far back the query checks for new processes
 $os = "windows"
-$global:agentIdsFromFilePulls = New-Object System.Collections.ArrayList
 
 # Set up headers for authentication and content type
 $headers = @{
@@ -49,19 +48,10 @@ foreach ($newProc in $filteredUnsignedProcsRecent){
     $newHash = $newProc.value[2]
     [bool]$pullFileFromS1 = $false
 
-    $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -ErrorAction silentlycontinue
+    $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unsignedWinProcsBaseline.json" -signatureStatus "unsigned" -ErrorAction silentlycontinue
+
     if ($pullFileFromS1 -eq $false){
         $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash
-
-        if ($agentId[-1] -match "^\d") {
-        $agentIdsFromFilePulls.Add($agentId[-1])
-        #$agentIdsFromFilePulls = $agentIdsFromFilePulls | select -Unique #Deduplicate
-        } else {
-            Write-Host "Didn't start with regex digit"
-        }
-
-        Get-S1Activities -headers $headers -baseUrl $baseUrl -ErrorAction silentlycontinue
-
     } else {
         continue
     }

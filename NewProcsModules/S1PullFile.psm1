@@ -11,6 +11,7 @@ function Get-FileFromS1{
         $accountid
     )
 
+Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 
 # Define variables
 $query = "src.process.image.sha256 = '$newHash' | columns src.process.name, agent.uuid, src.process.image.path, account.id | group procCount = estimate_distinct (agent.uuid) by src.process.name, agent.uuid, src.process.image.path, account.id | sort +agent.uuid | limit 20"
@@ -71,21 +72,18 @@ if ($status -eq 'FINISHED') {
     Write-Output "Query failed or was cancelled. Final status: $status"
 }
 
-#$statusResponse.data.data
-
 $agentuuid = $statusResponse.data.data[0][1]
 $accountId = $statusResponse.data.data[0][3]
 $imagePath = $statusResponse.data.data[0][2]
 #Track how many devices the hash was seen on
 $hashCount = $statusResponse.data.Count
-$hashCount
 $password = "Infected123"
 
-$findOtherAccountId = "https://usea1-equifax.sentinelone.net/web/api/v2.1/agents?accountIds=$accountId&uuid=$agentuuid"
+$findOtherAccountId = "https://site.net/web/api/v2.1/agents?accountIds=$accountId&uuid=$agentuuid"
 $idResponse = Invoke-RestMethod -Uri $findOtherAccountId -Method Get -Headers $headers
 $idforfilepull = $idResponse.data.id
 
-$URI = "https://usea1-equifax.sentinelone.net/web/api/v2.1/agents/$idforfilepull/actions/fetch-files"
+$URI = "https://site.net/web/api/v2.1/agents/$idforfilepull/actions/fetch-files"
 
 $Body = @{
     data = @{
@@ -94,10 +92,36 @@ $Body = @{
     }
 }
 $BodyJson = $Body | ConvertTo-Json
-$fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
-    if ($idforfilepull -match "^\d") {
-        return $idforfilepull
-    } else {
-        continue
-    }
+$fileUploadResponse
+try {
+    $fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
 }
+catch {
+    $fileUploadResponse = $null
+}
+
+$retryCount = 0
+$maxRetries = 5
+
+    if ($fileUploadResponse.data.success -match "True") {
+        Get-S1Activities -S1GetActivitiesheaders $headers -baseUrl $baseUrl -agentId $idforfilepull -ErrorAction silentlycontinue
+        return $idforfilepull
+    }
+
+    while ($fileUploadResponse.data.success -notmatch "True") {
+            Start-Sleep -Seconds 30
+            $fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
+            
+            Write-Host "Primary Desc field:"
+            Write-Host $fileUploadResponse.data.primaryDescription
+
+            if ($fileUploadResponse.data.primaryDescription -match "successfully uploaded") {
+                Get-S1Activities -S1GetActivitiesheaders $headers -baseUrl $baseUrl -agentId $idforfilepull -ErrorAction silentlycontinue
+                continue
+            } elseif ($retryCount -ge $maxRetries) {
+                break
+            } else {
+                $retryCount++
+            }
+    }
+   }

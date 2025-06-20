@@ -7,13 +7,14 @@ function Get-NetworkPortsforEnterprise{
         $timeToBaseline,
         $os,
         $currentTime,
-        $lastDayTime
+        $lastDayTime,
+        $apiToken
     )
 
 
 # Define variables
-$apiToken = ''
-$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
+$apiToken = $apiToken
+$baseUrl = 'https://site.sentinelone.net/web/api/v2.1'
 $query = "endpoint.os = '$os' and src.process.name = '$srcProcName' and not(endpoint.name = '$hostName') | columns dst.port.number  | group PortCount = count (dst.port.number) by dst.port.number  | sort -PortCount | limit 1000"
 #$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
 $pollingInterval = 1 # Interval in seconds to check the status of the query

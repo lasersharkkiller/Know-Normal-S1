@@ -1,7 +1,21 @@
+Import-Module -Name ".\NewProcsModules\MispPull.psm1"
 Import-Module -Name ".\AlertsModules\Alerts_Main.psm1"
 Import-Module -Name ".\NewProcsModules\UnverifiedProcs_Main.psm1"
 Import-Module -Name ".\NewProcsModules\UnsignedWinProcs_Main.psm1"
 Import-Module -Name ".\stringsBaseline\BaseLineStrings_with_Intezer.psm1"
+Import-Module -Name ".\NewProcsModules\Intezer_Analyze_By_Hash.psm1"
+Import-Module -Name ".\NewProcsModules\IntezerCheckUrl.psm1"
+Import-Module -Name ".\NewProcsModules\CheckAgainstVT.psm1"
+Import-Module -Name ".\NewProcsModules\CheckApiVoid.psm1"
+Import-Module -Name ".\NewProcsModules\GetASN-Cymru.psm1"
+Import-Module -Name ".\NewProcsModules\CheckThreatGrid.psm1"
+
+#Get Updates from MISP
+try {
+    Get-MispPull
+} catch {
+    Write-Host "Unable to download the latest internal block list"
+}
 
 Write-Host "Choose which function you would like to use:"
 Write-Host "1) Alerts and Threats"

@@ -1,4 +1,4 @@
-function Get-StringsBaseline{
+function Get-PullIntezerStrings{
 
     param (
         [Parameter(Mandatory=$true)]

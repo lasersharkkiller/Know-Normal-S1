@@ -3,7 +3,7 @@ Import-Module -Name ".\stringsBaseline\PullStrings_for Hash_with_Intezer.psm1"
 
 $unsignedProcsBaseline = Get-Content output\unsignedWinProcsBaseline.json | ConvertFrom-Json 
 $unverifiedProcsBaseline = Get-Content output\unverifiedProcsBaseline.json | ConvertFrom-Json
-$fileNames = (Get-ChildItem -Path "output-strings").BaseName
+$existingHashes = (Get-ChildItem -Path "output-strings").BaseName
 
 $base_url = 'https://analyze.intezer.com/api/v2-0'
 
@@ -27,8 +27,8 @@ catch {
 
 #Filter on hashes we have not pulled strings for yet (unverified)
 foreach ($unvProc in $unverifiedProcsBaseline){
-    foreach ($fileName in $fileNames){
-        if($unvProc.value[2] -eq $fileName){
+    foreach ($existingHash in $existingHashes){
+        if($unvProc.value[2] -eq $existingHash){
             Write-Host "We had a match and are filtering out"
             $unvProc.value[3] = 42
         }
@@ -40,8 +40,8 @@ Write-Host ($filteredUnverifiedProcs | Out-String) -ForegroundColor Cyan
 
 #Filter on hashes we have not pulled strings for yet (unsigned)
 foreach ($unsProc in $unsignedProcsBaseline){
-    foreach ($fileName in $fileNames){
-        if($unsProc.value[2] -eq $fileName){
+    foreach ($existingHash in $existingHashes){
+        if($unsProc.value[2] -eq $existingHash){
             $unsProc.value[3] = 42
         }
     }
@@ -53,13 +53,13 @@ Write-Host ($filteredUnsignedProcs | Out-String) -ForegroundColor Cyan
 #for each hash in unverified
 foreach ($needsStrings in $filteredUnverifiedProcs) {
     $checkHash = $needsStrings.value[2]
-    Get-StringsBaseline -intezer_headers $intezer_headers -checkHash $checkHash -ErrorAction silentlycontinue
+    Get-PullIntezerStrings -intezer_headers $intezer_headers -checkHash $checkHash -ErrorAction silentlycontinue
 }
 
 #for each hash in unsigned
 foreach ($needsStrings in $filteredUnsignedProcs) {
     $checkHash = $needsStrings.value[2]
-    Get-StringsBaseline -intezer_headers $intezer_headers -checkHash $checkHash -ErrorAction silentlycontinue
+    Get-PullIntezerStrings -intezer_headers $intezer_headers -checkHash $checkHash -ErrorAction silentlycontinue
 }
 
 }

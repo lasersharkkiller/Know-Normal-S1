@@ -2,28 +2,48 @@ function Get-S1Activities{
 
     param (
         [Parameter(Mandatory=$true)]
+        $S1GetActivitiesheaders,
         $baseUrl,
-        $headers
+        $agentId
     )
+    
+Import-Module -Name ".\NewProcsModules\DeleteDuplicates.psm1"
 
 # Define variables, note that activityType=80 is downloaded file
 $now = (Get-Date)
 $topoftheHour = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:00:00.000000Z")
-$activityURL = "$baseUrl/activities?activityTypes=80&agentIds=$agentIdsFromFilePulls&createdAt__gt=$topoftheHour"
+$activityURL = "$baseUrl/activities?activityTypes=80&agentIds=$agentId&createdAt__gt=$topoftheHour"
 $activityURL = $activityURL -replace(" ",",") #format for S1 API call
-$activityURL
+
 #Remove the application/json content type or we can't download
 $newHeaders = @{
-    'Authorization' = $headers.Authorization
+    'Authorization' = $S1GetActivitiesheaders.Authorization
 }
 
 # Step 1: find the DownloadUrl
-$newActivityResponse = Invoke-RestMethod -Uri $activityURL -Method Get -Headers $headers
+$newActivityResponse
+try {
+    $newActivityResponse = Invoke-RestMethod -Uri $activityURL -Method Get -Headers $S1GetActivitiesheaders
+}
+catch {
+    continue
+}
+$retryCount = 0
+$maxRetries = 5
 
-if ($newActivityResponse -ne $null) {
-    $AgentIdForFileDownload = $newActivityResponse.data.agentid[-1]
-    $downloadURL = $newActivityResponse.data.data.downloadUrl[-1]
-    $uploadedFilename = $newActivityResponse.data.data.uploadedFilename[-1]
+while ($newActivityResponse.data.primaryDescription -notmatch "successfully uploaded") {
+    Start-Sleep -Seconds 30
+    $newActivityResponse = Invoke-RestMethod -Uri $activityURL -Method Get -Headers $S1GetActivitiesheaders
+    $retryCount++
+    if ($retryCount -ge $maxRetries) {
+        break
+    }
+}
+
+if ($newActivityResponse.data.primaryDescription -match "successfully uploaded") {
+    $AgentIdForFileDownload = $newActivityResponse.data.agentid
+    $downloadURL = $newActivityResponse.data.data.downloadUrl
+    $uploadedFilename = $newActivityResponse.data.data.uploadedFilename
 
     #Download File
     $URI = "$baseUrl$downloadURL"
@@ -40,7 +60,6 @@ if ($newActivityResponse -ne $null) {
         
     #Trying a jenky workaround
     Start-Process "chrome" $URI
-    $agentIdsFromFilePulls.Remove($AgentIdForFileDownload)
 
     #Move from Downloads - part of the jenky workaround
     $downloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
@@ -52,9 +71,11 @@ if ($newActivityResponse -ne $null) {
         continue
     } else {
         & "C:\Program Files\7-Zip\7z.exe" e ".\files\*"  -o".\files" -p"Infected123" -aot -bso0
-        Remove-Item -Path (".\files\manifest*",".\files\*.zip",".\files\.*",".\files\version*") -ErrorAction SilentlyContinue
+        $binaryExts = @(".exe",".bin",".obj",".elf")
+        Get-ChildItem ".\files" -File -Recurse | Where-Object { $binaryExts -notcontains $_.Extension.ToLower() } | Remove-Item -ErrorAction SilentlyContinue
+        Get-DeleteDuplicates
     }
-
+    Clear-Variable $newActivityResponse
 } else {
     continue
 }

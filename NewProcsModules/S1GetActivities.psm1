@@ -6,8 +6,8 @@ function Get-S1Activities{
         $baseUrl,
         $agentId
     )
-    
-Import-Module -Name ".\NewProcsModules\DeleteDuplicates.psm1"
+
+Import-Module -Name ".\NewProcsModules\FileUnzip.psm1"
 
 # Define variables, note that activityType=80 is downloaded file
 $now = (Get-Date)
@@ -61,20 +61,9 @@ if ($newActivityResponse.data.primaryDescription -match "successfully uploaded")
     #Trying a jenky workaround
     Start-Process "chrome" $URI
 
-    #Move from Downloads - part of the jenky workaround
-    $downloadsPath = (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path
-    #Note I tried filtering on Mark of the Web but oddly I'm not seeing a Zone.Identifier alternate stream, only $DATA
-    $checkFolder = (Get-ChildItem -Filter "*.zip" -Path $downloadsPath).Count
-    Get-ChildItem -Filter "*.zip" -Path $downloadsPath | Where-Object { $_.LastWriteTime -gt (Get-Date).AddSeconds(-300) } | Move-Item -Destination .\files\
-    #Using 7z.exe instead of Expand-7zip bc PS module doesnt support extraction without file structure
-    if ($checkFolder -eq 0){
-        continue
-    } else {
-        & "C:\Program Files\7-Zip\7z.exe" e ".\files\*"  -o".\files" -p"Infected123" -aot -bso0
-        $binaryExts = @(".exe",".bin",".obj",".elf")
-        Get-ChildItem ".\files" -File -Recurse | Where-Object { $binaryExts -notcontains $_.Extension.ToLower() } | Remove-Item -ErrorAction SilentlyContinue
-        Get-DeleteDuplicates
-    }
+    #Unzip, double check file magic header (dont rely on extension)
+    Get-FileUnzip
+
     Clear-Variable $newActivityResponse
 } else {
     continue

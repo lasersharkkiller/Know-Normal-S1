@@ -19,7 +19,7 @@ Import-Module -Name ".\AlertsModules\IncidentQueryThreatInfo.psm1"
 $timeToBaseline = 2
 
 # S1 API token and base URL
-$API_TOKEN = ''
+$apiToken = ''
 $BASE_URL = 'https://usea1-company.sentinelone.net'
 $alertsList = "$BASE_URL/web/api/v2.1/cloud-detection/alerts"
 $threatsList = "$BASE_URL/web/api/v2.1/threats"
@@ -68,7 +68,7 @@ if (Test-Path -Path $folderPath) {
 
 # Set up headers for authentication and content type
 $headers = @{
-    'Authorization' = "ApiToken $API_TOKEN"
+    'Authorization' = "ApiToken $apiToken"
     'Content-Type' = 'application/json'
 }
 
@@ -168,16 +168,16 @@ if($alertOrThreat -eq "alert"){
 
 $detectionEngine = ""
 if($alertOrThreat -eq "threat"){
-    $ruleName = $threatsResponse.data.threatInfo.threatName[$choice]
-    $srcProcStoryline = $threatsResponse.data.threatInfo.storyline[$choice] #storyline does NOT match up in DeepViz on static or dynamic
-    $os = $threatsResponse.data.agentRealTimeInfo.agentOsType[$choice]
-    $srcProcName = $threatsResponse.data.threatInfo.originatorProcess[$choice]
-    $isFileless = $threatsResponse.data.threatInfo.isFileless[$choice]
+    $ruleName = $threatsResponse.data.threatInfo.threatName
+    $srcProcStoryline = $threatsResponse.data.threatInfo.storyline #storyline does NOT match up in DeepViz on static or dynamic
+    $os = $threatsResponse.data.agentRealTimeInfo.agentOsType
+    $srcProcName = $threatsResponse.data.threatInfo.originatorProcess
+    $isFileless = $threatsResponse.data.threatInfo.isFileless
 
     #we're going to need these to query for addit data not returned by threat API (but is by alert API)
-    $endpointName = $threatsResponse.data.agentRealtimeInfo.agentComputerName[$choice]
+    $endpointName = $threatsResponse.data.agentRealtimeInfo.agentComputerName
     $fileSha1 = $threatsResponse.data.threatInfo.sha1[0]
-    $detectionEngine = $threatsResponse.data.threatInfo.detectionType[$choice] #when S1 web pivots they use an event type - but it doesn't match to any fields returned by API so we wont actually use this
+    $detectionEngine = $threatsResponse.data.threatInfo.detectionType #when S1 web pivots they use an event type - but it doesn't match to any fields returned by API so we wont actually use this
     
     if($detectionEngine -eq "static"){
         Get-ThreatExtraInfo -endpointName $endpointName -fileSha1 $fileSha1 -currentTime $currentTime -lastDayTime $lastDayTime
@@ -235,7 +235,7 @@ if($alertOrThreat -eq "threat"){
 }
 
 #Know Normal #1: Parent Process
-Get-ParentProcs -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-ParentProcs -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $parentProcs = Get-Content output\parentProcs.json | ConvertFrom-Json
 $parentProcsCount = $parentProcs.Count
 $parentProcAlertCount = 1
@@ -251,11 +251,11 @@ foreach ($parentProc in $parentProcs)
 }
 
 #Know Normal #2 Part 1: Publisher Info
-Get-ProcSigInfo -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-ProcSigInfo -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procSigInfos = Get-Content output\ProcSigInfo.json | ConvertFrom-Json
 
 #Know Normal #2 Part 2: Check if Signed / Verified
-Get-SignedVerifiedInfo -srcProcName $srcProcName -timeToBaseline $timeToBaseline -srcProcStoryline $srcProcStoryline -currentTime $currentTime -lastDayTime $lastDayTime
+Get-SignedVerifiedInfo -srcProcName $srcProcName -timeToBaseline $timeToBaseline -srcProcStoryline $srcProcStoryline -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procSignedVerifiedInfo = Get-Content output\ProcSignedVerifiedInfo.json | ConvertFrom-Json
 
     #If the publisher is unverified, check to see if it might be attempting to masquerade as a legit publisher
@@ -266,7 +266,7 @@ $procSignedVerifiedInfo = Get-Content output\ProcSignedVerifiedInfo.json | Conve
     }
 
 #Know Normal #3: Process Image Path
-Get-ProcImagePath -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-ProcImagePath -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procImagePaths = Get-Content output\srcProcImagePaths.json | ConvertFrom-Json
 $procImagePathsCount = $procImagePaths.Count
 $procImagePathsAlertCount = 1
@@ -280,12 +280,12 @@ foreach ($procImagePath in $procImagePaths){
 }
 
 #Know Normal #4 Part 1: Network Ports for Source Process of Alerted Endpoint
-Get-NetworkPortsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime
+Get-NetworkPortsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procAlertNetworkPorts = Get-Content output\NetworkPortsforAlertProc.json | ConvertFrom-Json
 
 
 #Know Normal #4 Part 2: Network Ports for Source Process in Environment
-Get-NetworkPortsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-NetworkPortsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procEnterpriseNetworkPorts = Get-Content output\NetworkPortsforEnterprise.json | ConvertFrom-Json
 $procEnterpriseNetworkPortsCount = $procEnterpriseNetworkPorts.Count
 $procNetworkPortsAlertsCount = 1 ##This is the part I need to figure out down the road
@@ -305,11 +305,11 @@ foreach ($procEnterpriseNetworkPort in $procEnterpriseNetworkPorts){
 }
 
 #Know Normal #5 Part 1: Dst IPs for Source Process of Alerted Endpoint
-Get-DstIPsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime
+Get-DstIPsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procAlertDstIPs = Get-Content output\DstIpsforAlertProc.json | ConvertFrom-Json
 
 #Know Normal #5 Part 2: Dst IPs for Source Process in Environment
-Get-DstIPsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-DstIPsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procEnterpriseDstIPs = Get-Content output\DstIPsforEnterprise.json | ConvertFrom-Json
 $procEnterpriseDstIPsCount = $procEnterpriseNetworkPorts.Count
 $procDstIPsAlertsCount = 1 ##This is the part I need to figure out now
@@ -329,11 +329,11 @@ foreach ($procEnterpriseDstIP in $procEnterpriseDstIPs){
 }
 
 #Know Normal #6 Part 1: DNS Requests for Source Process of Alerted Endpoint
-Get-DnsReqsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime
+Get-DnsReqsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procAlertDnsReqs = Get-Content output\DnsReqsforAlertProc.json | ConvertFrom-Json
 
 #Know Normal #6 Part 2: DNS Requests for Source Process in Environment
-Get-DnsReqsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-DnsReqsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procEnterpriseDnsReqs = Get-Content output\DnsReqsforEnterprise.json | ConvertFrom-Json
 
 foreach ($procAlertDnsReq in $procAlertDnsReqs){
@@ -345,11 +345,11 @@ foreach ($procAlertDnsReq in $procAlertDnsReqs){
 }
 
 #Know Normal #7 Part 1: Indicators for Source Process of Alerted Endpoint
-Get-IndicatorsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime
+Get-IndicatorsforAlertProc -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procAlertIndicators = Get-Content output\IndicatorsforAlertProc.json | ConvertFrom-Json
 
 #Know Normal #7 Part 2: Indicators for Source Process in Environment
-Get-IndicatorsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime
+Get-IndicatorsforEnterprise -hostName $hostName -srcProcName $srcProcName -timeToBaseline $timeToBaseline -os $os -currentTime $currentTime -lastDayTime $lastDayTime -apiToken $apiToken
 $procEnterpriseIndicators = Get-Content output\IndicatorsforEnterprise.json | ConvertFrom-Json
 
 foreach ($procAlertIndicator in $procAlertIndicators){

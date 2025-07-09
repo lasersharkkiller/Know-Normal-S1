@@ -50,7 +50,7 @@ while ($checkIfPending) {
         $result = Invoke-RestMethod -Method "GET" -Uri $result_url -Headers $intezer_headers -ErrorAction silentlycontinue
     }
     catch {
-        Write-Host "Intezer doesn't already have" $fileName ", we need to pull with S1." -ForegroundColor Yellow
+        Write-Host "Intezer doesn't already have" $fileName ", next trying VT."
         return $false
     }
 
@@ -106,10 +106,29 @@ while ($checkIfPending) {
         Write-Host "Sub-verdict: " $result.result.sub_verdict -ForegroundColor $textColor
 
         #First we extracted dynamic network artifact
+        #Note I have found dynamic network artifacts are best found in behavior, NOT TTPs or IOCs
         $analysis_id = $result.result.analysis_id
-        $dynamicTTPUrl = $base_url + '/analyses/' + $analysis_id + '/dynamic-ttps'
+        $dynamicTTPUrl = $base_url + '/analyses/' + $analysis_id + '/behavior'
         $dynamicTTPs = Invoke-RestMethod -Uri $dynamicTTPUrl -Headers $intezer_headers
-        Write-Host $dynamicTTPs.result.data
+        
+
+        Write-Host "Intezer dynamic network artifacts: "
+        if ($dynamicTTPs.result.network.dns.Count -gt 0){
+            Write-Host "Network DNS: " $dynamicTTPs.result.network.dns
+            $ApiVoidResults = Get-CheckApiVoid -artifacts $dynamicTTPs.result.network.dns -type "DomainName"
+        }
+        if ($dynamicTTPs.result.network.http.Count -gt 0){
+            Write-Host "Network HTTP: " $dynamicTTPs.result.network.http
+            $ApiVoidResults = Get-CheckApiVoid -artifacts $dynamicTTPs.result.network.http -type "DomainName"
+        }
+        if ($dynamicTTPs.result.network.tcp.Count -gt 0){
+            Write-Host "Network TCP: " $dynamicTTPs.result.network.tcp
+            $ApiVoidResults = Get-CheckApiVoid -artifacts $dynamicTTPs.result.network.tcp.ip -type "IPAddress"
+        }
+        if ($dynamicTTPs.result.network.udp.Count -gt 0){
+            Write-Host "Network UDP: " $dynamicTTPs.result.network.udp
+            $ApiVoidResults = Get-CheckApiVoid -artifacts $dynamicTTPs.result.network.udp.ip -type "IPAddress"
+        }
         
         #First we extracted dynamic network artifact, now we extract static network artifacts
         #Static needs alot more cleaning up since the output is not clean like the dynamic output
@@ -214,8 +233,8 @@ while ($checkIfPending) {
                             #Write-Host $ASNinfo
 
                             #Check ApiVoid
-                            $ApiVoidResults = Get-CheckApiVoid -artifact $ip -type "IPAddress"
-                            Write-Host "ApiVoid Risk Score: " + $ApiVoidResults.risk_score.result
+                            $ApiVoidResults = Get-CheckApiVoid -artifacts $ip -type "IPAddress"
+                            #Write-Host "ApiVoid Risk Score: " + $ApiVoidResults.risk_score.result
                         }
                         $artifactDedupList += $artifact
                     }
@@ -269,6 +288,7 @@ while ($checkIfPending) {
                         if ($existsInTrustedDomains -eq $true){
                             Write-Host "$trimmedartifact is in the Trusted Domains" -ForegroundColor "Green"
                         } elseif ($existsInSuspiciousDomains -eq $true){
+                            Write-Host "-"
                             Write-Host "$trimmedartifact is in the Suspicious Domains" -ForegroundColor "Yellow"
                             Write-Host "Conducting Deeper Analysis on full url:" -ForegroundColor "Yellow"
                             Get-IntezerCheckUrl -url $extractedUrl
@@ -282,8 +302,8 @@ while ($checkIfPending) {
                             #Write-Host $ASNinfo
 
                             #Check ApiVoid
-                            $ApiVoidResults = Get-CheckApiVoid -artifact $trimmedartifact -type "DomainName"
-                            Write-Host "ApiVoid Risk Score: " + $ApiVoidResults.risk_score.result
+                            $ApiVoidResults = Get-CheckApiVoid -artifacts $trimmedartifact -type "DomainName"
+                            #Write-Host "ApiVoid Risk Score: " + $ApiVoidResults.risk_score.result
                         }
                         $artifactDedupList += $trimmedartifact
                     }

@@ -6,12 +6,12 @@ param (
         $type
     )
 
+$ApiVoidApi = Get-Secret -Name 'APIVoid_API_Key' -AsPlainText
+
 Import-Module -Name ".\NewProcsModules\CheckBlockedCountries.psm1"
 Import-Module -Name ".\NewProcsModules\CheckSuspiciousASNs.psm1"
     
 foreach ($artifact in $artifacts) {
-    $ApiVoidApi = ''
-
     $ApiVoid_headers = @{
         "X-API-Key" = $ApiVoidApi
         "Content-Type" = "application/json"

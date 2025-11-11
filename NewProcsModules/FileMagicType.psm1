@@ -44,7 +44,7 @@ function Get-FileMagicType {
 
                     if (-not (Test-Path $targetPath)) {
                         Rename-Item -Path $file.FullName -NewName $targetName
-                        Write-Host "Renamed $($file.Name) ➜ $targetName"
+                        Write-Host "Renamed $($file.Name) to $targetName"
                     } else {
                         # Compare hashes
                         $existingHash = (Get-FileHash $targetPath -Algorithm SHA256).Hash
@@ -77,4 +77,5 @@ function Get-FileMagicType {
             Write-Host "Could not process $($file.Name): $($_.Exception.Message)"
         }
     }
+    return
 }

@@ -7,7 +7,7 @@ function Get-S1Activities{
         $agentId
     )
 
-Import-Module -Name ".\NewProcsModules\FileUnzip.psm1"
+Import-Module -Name ".\NewProcsModules\FileUnzip.psm1" | Out-Null
 
 # Define variables, note that activityType=80 is downloaded file
 $now = (Get-Date)
@@ -36,7 +36,8 @@ while ($newActivityResponse.data.primaryDescription -notmatch "successfully uplo
     $newActivityResponse = Invoke-RestMethod -Uri $activityURL -Method Get -Headers $S1GetActivitiesheaders
     $retryCount++
     if ($retryCount -ge $maxRetries) {
-        break
+        $wasEmpty = $True
+        return
     }
 }
 
@@ -47,7 +48,7 @@ if ($newActivityResponse.data.primaryDescription -match "successfully uploaded")
 
     #Download File
     $URI = "$baseUrl$downloadURL"
-    $OutFile = $(Get-Location).Path + "\files\" + $uploadedFilename
+    $OutFile = $(Get-Location).Path + "\files\" + $uploadedFilename |Out-Null
         
     #For some reason this isn't working
     #$FileFetch = Invoke-WebRequest $URI -Method GET -Headers $newHeaders
@@ -59,13 +60,16 @@ if ($newActivityResponse.data.primaryDescription -match "successfully uploaded")
 	#Write-Host "File saved to $OutFile" -ForegroundColor Green
         
     #Trying a jenky workaround
-    Start-Process "chrome" $URI
+    Start-Process "chrome" $URI | Out-Null
 
     #Unzip, double check file magic header (dont rely on extension)
-    Get-FileUnzip
+    Start-Sleep -Seconds 5
 
+    Get-FileUnzip
     Clear-Variable $newActivityResponse
+    return
 } else {
-    continue
+    $wasEmpty = $True
+    return
 }
 }

@@ -12,9 +12,9 @@ function Get-UnsignedProcsRecent{
 
 
 # Define variables
-$query = "src.process.signedStatus = 'unsigned' and endpoint.os = '$os' and src.process.name matches '^[a-zA-Z0-9_]' and src.process.image.sha256 matches '.' and NOT (src.process.name matches ('.rbf$','.tmp')) | columns src.process.name, src.process.signedStatus, src.process.image.sha256 | group procCount = estimate_distinct (src.process.name) by src.process.name,src.process.signedStatus, src.process.image.sha256 | sort +src.process.name | limit 50000"
-Write-Host "Recent procs query"
-$query
+#I am limiting my baseline to less than 30MB for now, bc anything 30MB+ S1 does not calculate the hash correctly for
+#Note I am also excluding purple scope
+$query = "src.process.signedStatus = 'unsigned' and endpoint.os = '$os' and src.process.name matches '^[a-zA-Z0-9_]' and src.process.image.sha256 matches '.' and NOT (src.process.name matches ('.rbf$','.tmp') or site.name contains 'purple') src.process.image.size < 41457280 | columns src.process.name, src.process.signedStatus, src.process.image.sha256 | group procCount = estimate_distinct (src.process.name) by src.process.name,src.process.signedStatus, src.process.image.sha256 | sort +src.process.name | limit 50000"
 $now = (Get-Date)
 $currentTime = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $lastDayTime = $now.AddDays($queryDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")

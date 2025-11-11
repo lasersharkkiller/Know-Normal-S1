@@ -1,0 +1,77 @@
+function Get-checkIndicatorsForStats{
+
+    param (
+        [Parameter(Mandatory=$true)]
+        $indicatorName,
+        $headers
+    )
+
+
+# Define variables
+$result = (Get-Date)
+$currentTime = $result.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$lastDayTime = $result.AddDays(-90).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
+$query = "indicator.name = '$($indicatorName)' | columns endpoint.name | group endpointCount = count (endpoint.name) by endpoint.name  | sort -endpointCount | limit 1000"
+#$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
+$pollingInterval = 20 # Interval in seconds to check the status of the query
+
+# Define the endpoint URL for creating the Skylight query
+$queryCreateUrl = "$baseUrl/dv/events/pq"
+
+# Define the payload for the Power query
+$params = @{
+    "query" = $query
+    'fromDate' = "$($lastDayTime)"
+    'toDate' = "$($currentTime)"
+
+} | ConvertTo-Json
+
+# Step 1: Create the Power query
+$parentProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
+
+if ($parentProcResponse -ne $null -and $parentProcResponse.data.queryId) {
+    $queryId = $parentProcResponse.data.queryId
+    Write-Output "Indicator Query (for the enterprise) created successfully with Query ID: $queryId"
+} else {
+    Write-Output -ForegroundColor red "Failed to create the query. Please check your API token, endpoint, and query."
+    continue
+}
+
+# Step 2: Poll the query status until it's complete
+$queryStatusUrl = "$baseUrl/dv/events/pq-ping?queryId=$($queryId)"
+$status = 'running'
+while ($status -ne 'FINISHED') {
+    try {
+        $statusResponse = Invoke-RestMethod -Uri $queryStatusUrl -Method Get -Headers $headers
+    }
+    catch {
+        Write-Host -ForegroundColor red "Could not get indicators for the enterprise (surrounding the process from the alert). S1 API Issues. Trying again."
+        $parentProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
+
+        
+        if ($parentProcResponse -ne $null -and $parentProcResponse.data.queryId) {
+            $queryId = $parentProcResponse.data.queryId
+            Write-Output "DNS Request Query (for the alert) created successfully with Query ID: $queryId"
+        } else {
+            Write-Output -ForegroundColor red "Failed to create the query. Please check your API token, endpoint, and query."
+            continue
+        }
+    }
+    $status = $statusResponse.data.status
+    $progress = $statusResponse.data.progress
+    
+    Write-Output "Current query progress: $progress"
+    Start-Sleep -Seconds $pollingInterval
+}
+
+# Step 3: Once the status is finished, retrieve the results
+if ($status -eq 'FINISHED') {
+    Write-Output "Indicator Endpoint Count Stats:"
+    Write-Host "$($indicatorName) exsists in $($statusResponse.data.data.Count) endpoints over 3 months"
+    $statusResponse.data.data | ConvertTo-Json | Out-File "output-baseline\indicators\$($indicatorName).json"
+} else {
+    Write-Output "Query failed or was cancelled. Final status: $status"
+}
+
+}

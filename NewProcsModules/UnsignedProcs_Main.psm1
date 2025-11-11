@@ -13,8 +13,8 @@ Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 Import-Module -Name ".\NewProcsModules\PullFromVT.psm1"
 
 # Define variables
-$apiToken = ''
-$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
+$apiToken = Get-Secret -Name 'S1_API_Key_2' -AsPlainText
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
 $queryCreateUrl = "$baseUrl/dv/events/pq"
 
 $pollingInterval = 1 # Interval in seconds to check the status of the query
@@ -47,7 +47,7 @@ foreach ($unsProcRecent in $unsignedProcsRecent){
         }
     }
 }
-$filteredUnsignedProcsRecent = $unsignedProcsRecent | Where-Object {$_.value[3] -eq 1.0}
+$filteredUnsignedProcsRecent = $unsignedProcsRecent | Where-Object {$_.value[3] -eq 1}
 Write-Host ($filteredUnsignedProcsRecent | Out-String) -ForegroundColor Cyan
 
 ##Delete me
@@ -61,9 +61,9 @@ foreach ($newProc in $filteredUnsignedProcsRecent){
 
     #first check if it already exists in Intezer
     if ($os -eq "windows") {
-        $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unsignedWinProcsBaseline.json" -signatureStatus "unsigned" -ErrorAction silentlycontinue
+        $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unsignedWinProcsBaseline.json" -signatureStatus "unsigned" -publisher "none" -ErrorAction silentlycontinue
     } else {
-        $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unsignedLinuxProcsBaseline.json" -signatureStatus "unsigned" -ErrorAction silentlycontinue
+        $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unsignedLinuxProcsBaseline.json" -signatureStatus "unsigned" -publisher "none" -ErrorAction silentlycontinue
     }
     
     #if it's not in intezer, first try VT (before pulling with S1 - more efficient)
@@ -72,7 +72,7 @@ foreach ($newProc in $filteredUnsignedProcsRecent){
     }
 
     if ($pullFileFromS1 -eq $false -and $pullFileFromVT -eq $false){
-        $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash
+        $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash -ErrorAction silentlycontinue
     } else {
         continue
     }

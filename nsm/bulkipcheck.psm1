@@ -5,12 +5,14 @@ function Get-CheckBulkIpsApiVoid{
         $process
     )
 
-#Import-Module -Name "..\NewProcsModules\CheckBlockedCountries.psm1"
-#Import-Module -Name "..\NewProcsModules\CheckSuspiciousASNs.psm1"
+Import-Module -Name ".\NewProcsModules\CheckBlockedCountries.psm1"
+Import-Module -Name ".\NewProcsModules\CheckSuspiciousASNs.psm1"
+Import-Module -Name ".\nsm\S1IPtoDNS.psm1"
 
-$dstIps = Get-Content output\$($process)-dstIps.json | ConvertFrom-Json
+#$dstIps = Get-Content output\$($process)-dstIps.json | ConvertFrom-Json
+$dstIps = Import-Csv -Path nsm\svc_now_external.csv | Select-Object -ExpandProperty dst.ip.address
 $outputCsv = "$($process)-ip_results_apivoid.csv"
-$ApiVoidApi = "" # Replace with your APIVoid key
+$ApiVoidApi = Get-Secret -Name 'APIVoid_API_Key' -AsPlainText
 $apivoid_url = 'https://api.apivoid.com/v2/ip-reputation'
 $ApiVoid_headers = @{
         "X-API-Key" = $ApiVoidApi
@@ -20,37 +22,34 @@ $ApiVoid_headers = @{
 # Collect enriched results
 $results = @()
 
+$template = [PSCustomObject]@{
+    ip              = ''
+    RiskScore       = ''
+    Country         = ''
+    CountryName     = ''
+    IsGeoBlocked    = ''
+    ISP             = ''
+    ASN             = ''
+    IsASNSuspicious = ''
+    IsProxy         = ''
+    IsWebProxy      = ''
+    IsVPN           = ''
+    IsHosting       = ''
+    IsTor           = ''
+}
+
 foreach ($row in $dstIps) {
     $ip = $row.value[0]
     if ([string]::IsNullOrWhiteSpace($ip)) { continue }
 
     # Clone original row
-    $output = $row.PSObject.Copy()
+    $output = $template.PSObject.Copy()
     
     try {
         $ApiVoid_body = @{ ip = $ip } | ConvertTo-Json -Depth 3
         $response = Invoke-RestMethod -Method "POST" -Uri $apivoid_url -Headers $ApiVoid_headers -Body $ApiVoid_body
-        
-        #Check if it's in the blocked country list
-        $existsInCountryBlockList = Get-CheckBlockedCountries -country $response.information.country_name.Trim().ToLower()
-
-        #Check if it's in the suspicious ASNs list
-        $existsInASNList = Get-CheckBlockedCountries asn $response.information.asn
-<#            if ($existsInCountryBlockList -eq $true) {
-                Write-Host "Country: " $response.information.country_name "exists in geo-block list." -ForegroundColor Red
-            } else {
-                Write-Host "Country: " $response.information.country_name
-            }
-
-            
-            if ($existsInASNList -eq $true) {
-                Write-Host "ISP is in suspicious list: " $response.information.isp -ForegroundColor Yellow
-                Write-Host "ASN is in suspicious list: " $response.information.asn -ForegroundColor Yellow
-            } else {
-                Write-Host "ISP: " $response.information.isp
-                Write-Host "ASN: " $response.information.asn
-            }
-
+    
+<#            
             if ($response.anonymity.is_proxy -eq "true"){
                 Write-Host "Is Proxy: " $response.anonymity.is_proxy -ForegroundColor Yellow
             }
@@ -68,25 +67,48 @@ foreach ($row in $dstIps) {
             }#>
         if ($response.risk_score.result -eq 100) {
             Write-Host $ip " had a risk score of " $response.risk_score.result -ForegroundColor Red
+            Write-Host "Pulling the DNS request related to $($ip) from $($process)"
+            
+            Get-S1IPtoDNS -process $process -ip $ip 
+
         } elseif ($response.risk_score.result -gt 0) {
             Write-Host $ip " had a risk score of " $response.risk_score.result -ForegroundColor Yellow
         } else {
     
     }
         # Add enrichment fields
-        $output | Add-Member -NotePropertyName RiskScore -NotePropertyValue $response.risk_score.result
-        $output | Add-Member -NotePropertyName CountryName -NotePropertyValue $response.information.country_name
-        $output | Add-Member -NotePropertyName IsGeoBlocked -NotePropertyValue $existsInCountryBlockList
-        $output | Add-Member -NotePropertyName ISP -NotePropertyValue $response.information.isp
-        $output | Add-Member -NotePropertyName ASN -NotePropertyValue $response.information.asn
-        $output | Add-Member -NotePropertyName IsASNSuspicious -NotePropertyValue $existsInASNList
-        $output | Add-Member -NotePropertyName IsProxy -NotePropertyValue $response.anonymity.is_proxy
-        $output | Add-Member -NotePropertyName IsWebProxy -NotePropertyValue $response.anonymity.is_webproxy
-        $output | Add-Member -NotePropertyName IsVPN -NotePropertyValue $response.anonymity.is_vpn
-        $output | Add-Member -NotePropertyName IsHosting -NotePropertyValue $response.anonymity.is_hosting
-        $output | Add-Member -NotePropertyName IsTor -NotePropertyValue $response.anonymity.is_tor
+        $output.ip =  $ip
+        $output.RiskScore = $response.risk_score.result
+        $output.CountryName = $response.information.country_name
+        $output.ISP = $response.information.isp
+        $output.ASN = $response.information.asn
+        $output.IsProxy = $response.anonymity.is_proxy
+        $output.IsWebProxy = $response.anonymity.is_webproxy
+        $output.IsVPN = $response.anonymity.is_vpn
+        $output.IsHosting = $response.anonymity.is_hosting
+        $output.IsTor = $response.anonymity.is_tor
 
     } catch {
+    }
+
+    #Check if it's in the blocked country or sus ASN list
+    $existsInCountryBlockList = Get-CheckBlockedCountries -country $response.information.country_name.Trim().ToLower()
+    $existsInASNList = Get-CheckSuspiciousASNs -asn $response.information.asn
+
+    $output.IsGeoBlocked = $existsInCountryBlockList
+    $output.IsASNSuspicious = $existsInASNList
+
+    if ($existsInCountryBlockList -eq $true) {
+        Write-Host $ip "in Country: " $response.information.country_name "exists in geo-block list." -ForegroundColor Red
+        Get-S1IPtoDNS -process $process -ip $ip
+    } else {
+                
+    }
+
+    if ($existsInASNList -eq $true) {
+        Write-Host $ip " 's ISP is in suspicious list: " $response.information.isp " ASN: " $response.information.asn -ForegroundColor Yellow
+    } else {
+        
     }
 
     $results += $output

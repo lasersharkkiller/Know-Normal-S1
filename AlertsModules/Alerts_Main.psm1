@@ -19,8 +19,8 @@ Import-Module -Name ".\AlertsModules\IncidentQueryThreatInfo.psm1"
 $timeToBaseline = 2
 
 # S1 API token and base URL
-$apiToken = ''
-$BASE_URL = 'https://usea1-company.sentinelone.net'
+$apiToken = Get-Secret -Name 'S1_API_Key' -AsPlainText
+$BASE_URL = 'https://usea1-equifax.sentinelone.net'
 $alertsList = "$BASE_URL/web/api/v2.1/cloud-detection/alerts"
 $threatsList = "$BASE_URL/web/api/v2.1/threats"
 

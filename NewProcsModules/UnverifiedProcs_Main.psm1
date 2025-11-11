@@ -9,8 +9,8 @@ Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 Import-Module -Name ".\NewProcsModules\PullFromVT.psm1"
 
 # Define variables
-$apiToken = ''
-$baseUrl = 'https://usea1-company.sentinelone.net/web/api/v2.1'
+$apiToken = Get-Secret -Name 'S1_API_Key_2' -AsPlainText
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
 $queryCreateUrl = "$baseUrl/dv/events/pq"
 
 $pollingInterval = 1 # Interval in seconds to check the status of the query
@@ -23,7 +23,7 @@ $headers = @{
 }
 
 #Unverified Procs  ###API LIMIT IS 1,000
-Get-UnverifiedProcsBaseline -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays
+#Get-UnverifiedProcsBaseline -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays
 
 Get-UnverifiedProcsRecent -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays
 
@@ -34,28 +34,29 @@ $unverifiedProcsRecent = Get-Content output\unverifiedProcsRecent.json | Convert
 foreach ($unvProcRecent in $unverifiedProcsRecent){
     foreach ($unvProcBaseline in $unverifiedProcsBaseline){
         if($unvProcRecent.value[2] -eq $unvProcBaseline.value[2]){
-            $unvProcRecent.value[3] = 42
+            $unvProcRecent.value[-1] = 8675309
         }
     }
 }
-$filteredUnverifiedProcsRecent = $unverifiedProcsRecent | Where-Object {$_.value[3] -eq 1.0}
+$filteredUnverifiedProcsRecent = $unverifiedProcsRecent | Where-Object {$_.value[-1] -ne 8675309}
 Write-Host ($filteredUnverifiedProcsRecent | Out-String) -ForegroundColor Cyan
 
 foreach ($newProc in $filteredUnverifiedProcsRecent){
     $fileName = $newProc.value[0]
     $newHash = $newProc.value[2]
+    $publisher = $newProc.value[3]
     [bool]$pullFileFromS1 = $false
     [bool]$pullFileFromVT = $false
 
     #first check if it already exists in Intezer
-    $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unverifiedProcsBaseline.json" -signatureStatus "unverified" -ErrorAction silentlycontinue
+    $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unverifiedProcsBaseline.json" -signatureStatus "unverified" -publisher $publisher -ErrorAction silentlycontinue
     #if it's not in intezer, first try VT (before pulling with S1 - more efficient)
     if ($pullFileFromS1 -eq $false){
         $pullFileFromVT = Get-PullFromVT -Sha256 $newHash -fileName $fileName -ErrorAction silentlycontinue
     }
     
     if ($pullFileFromS1 -eq $false -and $pullFileFromVT -eq $false){
-        $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash
+        $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash -ErrorAction silentlycontinue
     } else {
         continue
     }

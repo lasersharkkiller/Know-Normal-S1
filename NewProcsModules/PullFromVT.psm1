@@ -6,7 +6,7 @@ param (
     [string]$OutputFolder = "files"
 )
 
-$VTApi = ''
+$VTApi = Get-Secret -Name 'VT_API_Key_3' -AsPlainText
 
 # Ensure output folder exists
 if (-not (Test-Path $OutputFolder)) {
@@ -15,7 +15,7 @@ if (-not (Test-Path $OutputFolder)) {
 
 # VT Intelligence file download URL
 $downloadUrl = "https://www.virustotal.com/intelligence/download/?hash=$Sha256&apikey=$VTApi"
-$outputFile = Join-Path $OutputFolder "$fileName"
+$outputFile = Join-Path $OutputFolder "$($fileName)"
 
 try {
     # Attempt to download the file

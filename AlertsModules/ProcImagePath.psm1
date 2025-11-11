@@ -13,7 +13,7 @@ function Get-ProcImagePath{
 
 # Define variables
 $apiToken = $apiToken
-$baseUrl = 'https://site.sentinelone.net/web/api/v2.1'
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
 $query = "endpoint.os = '$os' and src.process.name = '$srcProcName' | columns src.process.image.path | group ImagePathCount = count (src.process.image.path) by src.process.image.path  | sort -ImagePathCount | limit 100"
 #$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
 $pollingInterval = 1 # Interval in seconds to check the status of the query

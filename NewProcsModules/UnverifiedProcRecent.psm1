@@ -11,7 +11,8 @@ function Get-UnverifiedProcsRecent{
 
 
 # Define variables
-$query = "src.process.verifiedStatus = 'unverified' and src.process.name matches '^[a-zA-Z0-9_]' and src.process.image.sha256 matches '.' and NOT (src.process.name matches ('.rbf$','.current$','.tmp')) | columns src.process.name, src.process.verifiedStatus, src.process.image.sha256 | group procCount = estimate_distinct (src.process.name) by src.process.name,src.process.verifiedStatus, src.process.image.sha256 | sort +src.process.name | limit 10000"
+#I am limiting my baseline to less than 120MB for now
+$query = "src.process.verifiedStatus = 'unverified' and src.process.name matches '^[a-zA-Z0-9_]' and src.process.image.sha256 matches '.' and NOT (src.process.name matches ('.rbf$','.current$','.tmp') or site.name contains 'purple') src.process.image.size < 124857600 | columns src.process.name, src.process.verifiedStatus, src.process.image.sha256, src.process.publisher | group procCount = estimate_distinct (src.process.name) by src.process.name,src.process.verifiedStatus, src.process.image.sha256, src.process.publisher | sort +src.process.name | limit 10000"
 $now = (Get-Date)
 $currentTime = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $lastDayTime = $now.AddDays($queryDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")

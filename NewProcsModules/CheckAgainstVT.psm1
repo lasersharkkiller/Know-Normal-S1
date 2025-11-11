@@ -8,7 +8,8 @@ param (
 
 #Import-Module VirusTotalAnalyzer -Force
 #https://github.com/EvotecIT/VirusTotalAnalyzer
-$VTApi = ''
+# Threat Intel API Key
+$VTApi = Get-Secret -Name 'VT_API_Key_1' -AsPlainText
 
 # Create an array to store the results
 $VTresults = @()

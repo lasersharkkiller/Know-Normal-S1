@@ -12,9 +12,9 @@ function Get-FileFromS1{
     )
 
 Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
-
+Write-Host "newHash: $($newHash)" -ForegroundColor Cyan
 # Define variables
-$query = "src.process.image.sha256 = '$newHash' | columns src.process.name, agent.uuid, src.process.image.path, account.id | group procCount = estimate_distinct (agent.uuid) by src.process.name, agent.uuid, src.process.image.path, account.id | sort +agent.uuid | limit 20"
+$query = "src.process.image.sha256 = '$newHash' | columns src.process.name, agent.uuid, src.process.image.path, account.id, src.process.image.size, agent.version | group procCount = estimate_distinct (agent.uuid) by src.process.name, agent.uuid, src.process.image.path, account.id, src.process.image.size, agent.version | sort -agent.version| limit 200"
 $now = (Get-Date)
 $currentTime = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $lastDayTime = $now.AddDays($queryDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -73,55 +73,105 @@ if ($status -eq 'FINISHED') {
 }
 
 $agentuuid = $statusResponse.data.data[0][1]
-$accountId = $statusResponse.data.data[0][3]
 $imagePath = $statusResponse.data.data[0][2]
-#Track how many devices the hash was seen on
-$hashCount = $statusResponse.data.Count
+$accountId = $statusResponse.data.data[0][3]
+$srcProcImageSize = $statusResponse.data.data[0][4]
+$agentVersion = $statusResponse.data.data[0][5]
+
+#Track how many devices or locations the hash was seen on
+$hashCount = $statusResponse.data.data.Count
 $password = "Infected123"
 
-$findOtherAccountId = "https://site.net/web/api/v2.1/agents?accountIds=$accountId&uuid=$agentuuid"
-$idResponse = Invoke-RestMethod -Uri $findOtherAccountId -Method Get -Headers $headers
-$idforfilepull = $idResponse.data.id
+#For Windows agents before version 24.1 both the SHA1 & SHA256 only calculated off the first 30MB
+$targetVersion = [version]"24.1"
 
-$URI = "https://site.net/web/api/v2.1/agents/$idforfilepull/actions/fetch-files"
+    if ($agentVersion -lt $targetVersion -and [long]$srcProcImageSize -gt 31457279) {
+        #The Power Query sorts by -agent.version, so if the first one is less than 24.1 they all are
+        Write-Host "This file is above 30MB and only agents below 24.1, which calculates the incorrect hash. Skipping for now." -Foregroundcolor Yellow
+    } else {
+        #We might get a bunch of instances, set our max attempts to 5
+        $currentHost = 0
+        if ($hashCount -gt 4) {
+            $hashCount = 4
+        }
 
-$Body = @{
-    data = @{
-        password = $password
-        files = $imagePath
-    }
-}
-$BodyJson = $Body | ConvertTo-Json
-$fileUploadResponse
-try {
-    $fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
-}
-catch {
-    $fileUploadResponse = $null
-}
+        while ($currentHost -lt $hashCount) {
+        
+        if ($currentHost -lt $hashCount) {
+            Write-Host "Attempting $($currentHost) of $($hashCount). Capped at 5 per hash."
+            $agentuuid = $statusResponse.data.data[$currentHost][1]
+            $imagePath = $statusResponse.data.data[$currentHost][2]
+            $accountId = $statusResponse.data.data[$currentHost][3]
+            $srcProcImageSize = $statusResponse.data.data[$currentHost][4]
+            $agentVersion = $statusResponse.data.data[$currentHost][5]
 
-$retryCount = 0
-$maxRetries = 5
+            $findOtherAccountId = "https://usea1-equifax.sentinelone.net/web/api/v2.1/agents?accountIds=$accountId&uuid=$agentuuid"
+            $idResponse = Invoke-RestMethod -Uri $findOtherAccountId -Method Get -Headers $headers
+            $idforfilepull = $idResponse.data.id
 
-    if ($fileUploadResponse.data.success -match "True") {
-        Get-S1Activities -S1GetActivitiesheaders $headers -baseUrl $baseUrl -agentId $idforfilepull -ErrorAction silentlycontinue
-        return $idforfilepull
-    }
+            #Second check: If the host is online proceed
+            if ($idResponse.data.isActive -eq "True") {
+            $URI = "https://usea1-equifax.sentinelone.net/web/api/v2.1/agents/$idforfilepull/actions/fetch-files"
 
-    while ($fileUploadResponse.data.success -notmatch "True") {
-            Start-Sleep -Seconds 30
-            $fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
+                $Body = @{
+                    data = @{
+                        password = $password
+                        files = $imagePath
+                    }
+                }
+                $BodyJson = $Body | ConvertTo-Json
+                $fileUploadResponse
+                try {
+                    $fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
+                }
+                catch {
+                    $fileUploadResponse = $null
+                }
+
+                $retryCount = 0
+                $maxRetries = 5
+
+                if ($fileUploadResponse.data.success -match "True") {
+                    $global:wasEmpty = $False
+                    Get-S1Activities -S1GetActivitiesheaders $headers -baseUrl $baseUrl -agentId $idforfilepull -ErrorAction silentlycontinue
+                    if ($wasEmpty -eq $False) {
+                        return $idforfilepull
+                    } else {
+                        $currentHost++
+                    }
+                }
+
+                while ($fileUploadResponse.data.success -notmatch "True") {
+                    Start-Sleep -Seconds 20
+                    $fileUploadResponse = Invoke-RestMethod -Uri $URI -Method Post -Headers $headers -Body $BodyJson -ContentType "application/json"
             
-            Write-Host "Primary Desc field:"
-            Write-Host $fileUploadResponse.data.primaryDescription
+                    Write-Host "Primary Desc field:"
+                    Write-Host $fileUploadResponse.data.primaryDescription
 
-            if ($fileUploadResponse.data.primaryDescription -match "successfully uploaded") {
-                Get-S1Activities -S1GetActivitiesheaders $headers -baseUrl $baseUrl -agentId $idforfilepull -ErrorAction silentlycontinue
-                continue
-            } elseif ($retryCount -ge $maxRetries) {
-                break
+                    if ($fileUploadResponse.data.primaryDescription -match "successfully uploaded") {
+                        $global:wasEmpty = $False
+                        $wasEmpty = Get-S1Activities -S1GetActivitiesheaders $headers -baseUrl $baseUrl -agentId $idforfilepull -ErrorAction silentlycontinue    
+                        if ($wasEmpty -eq $False) {
+                            return $idforfilepull #previously break statement
+                        } else {
+                            $currentHost++
+                        }
+                    } elseif ($retryCount -ge $maxRetries) {
+                        $currentHost++
+                        break
+                    } else {
+                        $retryCount++
+                    }
+                }
             } else {
-                $retryCount++
+                Write-Host "Host uuid $($agentuuid) is offline, skipping." -ForegroundColor Yellow
+                $currentHost++
             }
+        } elseif ($currentHost -ge $hashCount) {
+            return $idforfilepull #previously break statement
+        } else {
+            $currentHost++
+            Write-Host "Next trying $($currentHost) of $($hashCount)"
+        }}
     }
-   }
+}

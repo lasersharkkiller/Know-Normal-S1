@@ -3,9 +3,8 @@ function Get-ProcessBulkIps{
 Import-Module -Name ".\NewProcsModules\CheckBlockedCountries.psm1"
 Import-Module -Name ".\NewProcsModules\CheckSuspiciousASNs.psm1"
 
-$inputCsv = ".\nsm\input_ips.csv" # CSV with columns like: ip, source, timestamp, etc.
-$outputCsv = ".\nsm\ip_results_apivoid.csv"
-$ApiVoidApi = "" # Replace with your APIVoid key
+$outputCsv = ".\nsm\bulk_ip_results.csv"
+$ApiVoidApi = Get-Secret -Name 'APIVoid_API_Key' -AsPlainText
 $apivoid_url = 'https://api.apivoid.com/v2/ip-reputation'
 $ApiVoid_headers = @{
         "X-API-Key" = $ApiVoidApi
@@ -31,11 +30,15 @@ $template = [PSCustomObject]@{
     IsTor           = ''
 }
 
+#$inputCsv = ".\nsm\input_ips.csv" # CSV with columns like: ip, source, timestamp, etc
+$rows = Import-Csv -Path ".\nsm\input_ips.csv" | Select-Object -ExpandProperty ip
 # Read CSV input
-$rows = Import-Csv -Path $inputCsv
+#$rows = Import-Csv -Path $inputCsv
 
 foreach ($row in $rows) {
-    $ip = $row.ip.Trim()
+Write-Host $row
+    #$ip = $row.ip.Trim()
+    $ip = $row
     if ([string]::IsNullOrWhiteSpace($ip)) { continue }
 
     # Clone original row
@@ -46,7 +49,7 @@ foreach ($row in $rows) {
         $response = Invoke-RestMethod -Method "POST" -Uri $apivoid_url -Headers $ApiVoid_headers -Body $ApiVoid_body
 
         # Add enrichment fields
-        $output.ip =  $row.ip
+        $output.ip =  $ip
         $output.RiskScore = $response.risk_score.result
         $output.CountryName = $response.information.country_name
         $output.ISP = $response.information.isp
@@ -66,8 +69,7 @@ foreach ($row in $rows) {
     $existsInASNList = Get-CheckSuspiciousASNs -asn $response.information.asn
     
     $output.IsGeoBlocked = $existsInCountryBlockList
-    $output.IsASNSuspicious = $existsInASNList
-        
+    $output.IsASNSuspicious = $existsInASNList 
 
     $results += $output
 }

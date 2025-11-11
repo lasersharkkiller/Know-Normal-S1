@@ -12,7 +12,7 @@ function Get-ThreatExtraInfo{
 
 # Define variables
 $apiToken = $apiToken
-$baseUrl = 'https://site.sentinelone.net/web/api/v2.1'
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
 $query = "endpoint.name = '$endpointName' and tgt.file.sha1 = '$fileSha1' | columns src.process.pid, src.process.name, src.process.image.path, src.process.parent.name, src.process.storyline.id, src.process.signedStatus, src.process.publisher, src.process.verifiedStatus | group pidCount = count (src.process.pid) by src.process.pid, src.process.name, src.process.image.path, src.process.parent.name, src.process.storyline.id, src.process.signedStatus, src.process.publisher, src.process.verifiedStatus"
 #$siteId = 'your_site_id_here' # Replace with your actual Site ID (optional, depending on the scope of your query)
 $pollingInterval = 1 # Interval in seconds to check the status of the query

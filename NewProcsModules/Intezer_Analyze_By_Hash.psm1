@@ -1,14 +1,16 @@
 function Get-IntezerHash{
     param (
-        [Parameter(Mandatory=$true)]
+        #[Parameter(Mandatory=$true)]
         $checkHash,
         $fileName,
         $baseline,
-        $signatureStatus
+        $signatureStatus,
+        $publisher
     )
 Import-Module -Name ".\NewProcsModules\DomainCleanup.psm1"
 Import-Module -Name ".\NewProcsModules\IntezerCheckUrl.psm1"
 Import-Module -Name ".\NewProcsModules\CheckApiVoid.psm1"
+$intezerAPI = Get-Secret -Name 'Intezer_API_Key' -AsPlainText
 
 $trustedDomains = Import-Csv -Path "output\trustedDomains.csv" | Where-Object {($_.PSObject.Properties.Value | ForEach-Object {[string]::IsNullOrWhiteSpace($_) }) -notcontains $true}
 $SuspiciousDomains = Import-Csv -Path "output\suspiciousDomains.csv" | Where-Object {($_.PSObject.Properties.Value | ForEach-Object {[string]::IsNullOrWhiteSpace($_) }) -notcontains $true}
@@ -18,7 +20,7 @@ $blockedIPs = "output\misp_ip_blocklist.txt" | Where-Object {($_.PSObject.Proper
 $base_url = 'https://analyze.intezer.com/api/v2-0'
 
 $intezer_body = @{
-    'api_key' = ''
+    'api_key' = $intezerAPI
 }
 
 $hash = @{
@@ -40,8 +42,20 @@ catch {
     }
 #Previously this re-analyzed the hash value, but eats up a file analysis license count. Attempting optimization. Plus it's so much quicker!
 #$response = Invoke-RestMethod -Method "POST" -Uri ($base_url + '/analyze-by-hash') -Headers $intezer_headers -Body ($hash | ConvertTo-Json) -ContentType "application/json"
-$response = Invoke-RestMethod -Method "GET" -Uri ($base_url + '/files/' + $checkHash) -Headers $intezer_headers -ContentType "application/json"
-$result_url = $base_url + $response.result_url
+try{
+    $response = Invoke-RestMethod -Method "GET" -Uri ($base_url + '/files/' + $checkHash) -Headers $intezer_headers -ContentType "application/json" -ErrorAction silentlycontinue
+} catch {
+    Write-Host "Intezer does not have that analysis."
+
+    Write-Host "Testing response if contains Analysis expired"
+    if ($response.error -eq "Analysis expired"){
+        Write-Host $response.result_url
+        #Try to reanalyze
+        $newresponse = Invoke-RestMethod -Method "GET" -Uri ($base_url + '/analyze-by-hash/' + $checkHash) -Headers $intezer_headers -ContentType "application/json" -ErrorAction silentlycontinue
+        Start-Sleep -Seconds 15
+    }
+}
+    $result_url = $base_url + $response.result_url
 
 [bool]$checkIfPending = $true
 
@@ -50,7 +64,7 @@ while ($checkIfPending) {
         $result = Invoke-RestMethod -Method "GET" -Uri $result_url -Headers $intezer_headers -ErrorAction silentlycontinue
     }
     catch {
-        Write-Host "Intezer doesn't already have" $fileName ", next trying VT."
+        Write-Host "Intezer doesn't already have" $($fileName) ", next trying VT."
         return $false
     }
 
@@ -66,8 +80,9 @@ while ($checkIfPending) {
             $newEntry = @{
                 value = @(
                     $fileName,
-                    "unsigned",
+                    $signatureStatus,
                     $checkHash,
+                    $publisher,
                     1.0
                  )
              }
@@ -84,16 +99,83 @@ while ($checkIfPending) {
                     $fileName,
                     $signatureStatus,
                     $checkHash,
+                    $publisher
                     1.0
                  )
              }
                        
             $updateBaseline += $newEntry
             $updateBaseline | ConvertTo-Json -Depth 10 | Set-Content -Path $baseline
+        } elseif ($result.result.verdict -eq "unknown"){
+
+            $updateBaseline = Get-Content $baseline | ConvertFrom-Json
+            
+            $newEntry = @{
+                value = @(
+                    $fileName,
+                    $signatureStatus,
+                    $checkHash,
+                    $publisher
+                    1.0
+                 )
+             }
+             
+            $textColor = "White"
+            $updateBaseline += $newEntry
+            $updateBaseline | ConvertTo-Json -Depth 10 | Set-Content -Path $baseline
+        }  elseif ($result.result.verdict -eq "not_supported"){
+
+            $updateBaseline = Get-Content $baseline | ConvertFrom-Json
+            
+            $newEntry = @{
+                value = @(
+                    $fileName,
+                    $signatureStatus,
+                    $checkHash,
+                    $publisher
+                    1.0
+                 )
+             }
+             
+            $textColor = "White"
+            $updateBaseline += $newEntry
+            $updateBaseline | ConvertTo-Json -Depth 10 | Set-Content -Path $baseline
         } elseif ($result.result.verdict -eq "suspicious"){
+
+            $updateBaseline = Get-Content $baseline | ConvertFrom-Json
+            
+            $newEntry = @{
+                value = @(
+                    $fileName,
+                    $signatureStatus,
+                    $checkHash,
+                    $publisher
+                    1.0
+                 )
+             }
+
             $textColor = "Yellow"
+            $updateBaseline += $newEntry
+            $updateBaseline | ConvertTo-Json -Depth 10 | Set-Content -Path $baseline
         } elseif ($result.result.verdict -eq "malicious"){
+            $maliciousBaseline = "output\maliciousProcsBaseline.json"
+            $updateMaliciousBaseline = Get-Content $maliciousBaseline | ConvertFrom-Json
+            
+            $newEntry = @{
+                value = @(
+                    $fileName,
+                    $signatureStatus,
+                    $checkHash,
+                    $publisher
+                    1.0
+                 )
+             }
+
             $textColor = "Red"
+            $updateMaliciousBaseline += $newEntry
+            $updateMaliciousBaseline | ConvertTo-Json -Depth 10 | Set-Content -Path $maliciousBaseline
+        } else {
+
         }
         
         Write-Host "---" -ForegroundColor $textColor
@@ -109,7 +191,7 @@ while ($checkIfPending) {
         #Note I have found dynamic network artifacts are best found in behavior, NOT TTPs or IOCs
         $analysis_id = $result.result.analysis_id
         $dynamicTTPUrl = $base_url + '/analyses/' + $analysis_id + '/behavior'
-        $dynamicTTPs = Invoke-RestMethod -Uri $dynamicTTPUrl -Headers $intezer_headers
+        $dynamicTTPs = Invoke-RestMethod -Uri $dynamicTTPUrl -Headers $intezer_headers -ErrorAction silentlycontinue
         
 
         Write-Host "Intezer dynamic network artifacts: "
@@ -225,8 +307,9 @@ while ($checkIfPending) {
                             Write-Host "$artifact is in the Trusted IPs" -ForegroundColor "Green"
                         } else {
                             #Check VirusTotal
-                            $VTresults = Get-CheckAgainstVT -artifact $ip -type "IPAddress"
-                            Write-Host $VTresults
+                            #Note for domains/ips it is more cost efficient to first filter with ApiVoid
+                            #$VTresults = Get-CheckAgainstVT -artifact $ip -type "IPAddress"
+                            #Write-Host $VTresults
                             
                             #Optional Get ASN info via Cymru
                             #$ASNinfo = Get-ASNCymru -artifact $ip -type "IPAddress"
@@ -294,8 +377,9 @@ while ($checkIfPending) {
                             Get-IntezerCheckUrl -url $extractedUrl
                         } else {
                             #Check VirusTotal
-                            $VTresults = Get-CheckAgainstVT -artifact $trimmedartifact -type "DomainName"
-                            Write-Host $VTresults
+                            #Note for domains/ips it is more cost efficient to first filter with ApiVoid
+                            #$VTresults = Get-CheckAgainstVT -artifact $trimmedartifact -type "DomainName"
+                            #Write-Host $VTresults
 
                             #Optional Get ASN info via Cymru
                             #$ASNinfo = Get-ASNCymru -artifact $trimmedartifact -type "DomainName"

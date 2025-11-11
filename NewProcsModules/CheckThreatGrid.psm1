@@ -1,5 +1,5 @@
 function Get-CheckThreatGrid {
-    #ThreatGrid doesn't do an ip/domain repuation check like I thought it would, but could be useful to find samples tied to a certain C2
+    #ThreatGrid doesn't do an ip/domain repuation check like I thought it would
     param (
         [Parameter(Mandatory=$true)]
         $artifact,
@@ -7,7 +7,7 @@ function Get-CheckThreatGrid {
     )
 
     # Threat Grid base API URL
-    $ThreatGridApiKey = ""
+    $ThreatGridApiKey = Get-Secret -Name 'ThreatGrid_API_Key' -AsPlainText
     $baseUrl = "https://panacea.threatgrid.com/api/v2"
 
     # Build API query URL for observables (IP enrichment)

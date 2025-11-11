@@ -1,10 +1,6 @@
-#function Get-CertGapHunt{
+function Get-CertGapHuntVT{
 
-#param (
-   
-#)
-
-$VTApi = 'put key here'
+$VTApi = Get-Secret -Name 'VT_API_Key_1' -AsPlainText
 $VT_headers = @{
         "x-apikey" = $VTApi
         "Content-Type" = "application/json"
@@ -131,4 +127,4 @@ $summary | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $outputFile
 
 Write-Host "Saved signer breakdown to $outputFile"
 
-#}
+}

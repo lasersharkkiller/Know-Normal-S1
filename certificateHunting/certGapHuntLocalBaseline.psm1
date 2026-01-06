@@ -1,4 +1,4 @@
-function Get-CertGapHuntLocalBaseline{
+﻿function Get-CertGapHuntLocalBaseline{
 
     [string]$HashFilesPath = ".\output-baseline\VirusTotal-main\"
     [string]$OutputFilePath = ".\output\certificate_anomalies.txt"

@@ -1,4 +1,4 @@
-function Get-CertGapHuntVT{
+﻿function Get-CertGapHuntVT{
 
 $VTApi = Get-Secret -Name 'VT_API_Key_1' -AsPlainText
 $VT_headers = @{

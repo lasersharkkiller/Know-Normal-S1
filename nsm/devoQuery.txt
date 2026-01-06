@@ -1,0 +1,9 @@
+from my.app.f5.asm
+  where timestamp("2025-12-17 12:32:06.000") <= eventdate < timestamp("2025-12-17 12:33:06.000")
+  select peek(rawMessage, re("X-Forwarded-For:\\s+((?:\\d{1,3}\\.){3}\\d{1,3})"), 1) as _XFF,
+    isnotnull(_XFF) ? _XFF : ipClient as XFF
+  where ispublic(ip4(XFF)) and isnull(lu("WAF_IPs_Allowed", "IP", ip4(XFF))) and isnull(lu("WAF_CIDR_Allowed", "CIDR", ip4(XFF))),
+    (request ->> "Qualys") = false,
+    (request ->> "datadog") = false
+  group by XFF
+  select count() as Count

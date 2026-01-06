@@ -1,59 +1,20 @@
-function Get-VTZippedSamplesFromList{
+function Get-SingleVTZippedSample{
 <#
 SYNOPSIS
-  Ask VirusTotal to build a password-protected ZIP for given SHA256s, download it,
-  and emit quick stats, a file-type breakdown, and a DLL entry-points CSV.
-
-REQUIREMENTS
-  - VT API key with Intelligence/Premium permissions for /intelligence/zip_files.
-  - PowerShell 5.1+ or 7+.
-  - Input: TXT (one SHA256 per line) or CSV with column 'IOC' containing SHA256s.
-
-OUTPUTS (next to -OutZip):
-  - <OutZip>.stats.json
-  - <OutZip>.filetypes.csv
-  - <OutZip>.dll_entrypoints.csv
+  Ask VirusTotal to build a password-protected ZIP for a given SHA256, download it
 #>
 
-param(
-  [Parameter(Mandatory=$true)]
-  [string]$InputPath,
-
-  [string]$OutZip = ".\VT_Samples_PassProtected.zip",
-
-  [string]$ZipPassword = "infected",
-
-  [int]$PollSeconds = 4,
-
+  [string]$sha256 = Read-Host -Prompt "Enter SHA256"
+  [string]$OutZip = ".\$($sha256).zip"
+  [string]$ZipPassword = "infected"
+  [int]$PollSeconds = 4
   [int]$PollTimeoutSeconds = 600
-)
 
 # ---------- Helpers ----------
 function Get-VTApiKey {
-  try { return (Get-Secret -Name 'VT_API_Key_1' -AsPlainText) } catch { }
+  try { return (Get-Secret -Name 'VT_API_Key_2' -AsPlainText) } catch { }
   if ($env:VT_API_KEY) { return $env:VT_API_KEY }
   return (Read-Host "Enter your VirusTotal API key (visible input)")
-}
-
-function Load-Hashes {
-  param([string]$Path)
-  if (-not (Test-Path $Path)) { throw "Input not found: $Path" }
-  $ext = [IO.Path]::GetExtension($Path).ToLowerInvariant()
-  if ($ext -eq ".csv") {
-    $csv = Import-Csv -Path $Path
-    if ($csv.Count -eq 0) { throw "CSV is empty." }
-    if (-not ($csv[0].PSObject.Properties.Name -contains "IOC")) {
-      throw "CSV must contain a column named 'IOC'."
-    }
-    return $csv | ForEach-Object { $_.IOC.Trim() } |
-           Where-Object { $_ -match '^[A-Fa-f0-9]{64}$' } |
-           Select-Object -Unique
-  } else {
-    return Get-Content -Path $Path -ErrorAction Stop |
-           ForEach-Object { $_.Trim() } |
-           Where-Object { $_ -match '^[A-Fa-f0-9]{64}$' } |
-           Select-Object -Unique
-  }
 }
 
 function VT-GET {
@@ -75,68 +36,16 @@ if (-not $VTApiKey) {
 }
 $headers = @{ "x-apikey" = $VTApiKey }
 
-$hashes = Load-Hashes -Path $InputPath
-if ($hashes.Count -eq 0) {
-  Write-Error "No valid SHA256 hashes found."
-  exit 1
-}
-
-Write-Host "Loaded $($hashes.Count) unique SHA256 hashes from input." -ForegroundColor Cyan
-
-# ---------- Pre-validate hashes (avoid failures on non-existent hashes) ----------
-$validHashes   = @()
-$missingHashes = @()
-
-Write-Host "Checking which hashes exist in VirusTotal (this uses /files/{hash})..." -ForegroundColor Cyan
-
-foreach ($h in $hashes) {
-  $uri = "https://www.virustotal.com/api/v3/files/$h"
-  try {
-    $resp = Invoke-RestMethod -Method Get -Uri $uri -Headers $headers -ErrorAction Stop
-    if ($resp.data.id) {
-      $validHashes += $h
-    } else {
-      Write-Warning "[!] Unexpected VT response for $h (no data.id). Skipping."
-      $missingHashes += $h
-    }
-  }
-  catch {
-    # Try to extract HTTP status code if present
-    $statusCode = $null
-    if ($_.Exception -and $_.Exception.Response) {
-      try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch { }
-    }
-
-    if ($statusCode -eq 404) {
-      Write-Warning "[!] Not found in VT: $h"
-    } elseif ($statusCode -eq 403) {
-      Write-Warning "[!] Access denied / forbidden in VT for: $h"
-    } else {
-      Write-Warning "[!] Error checking $h, skipping. Raw: $($_.Exception.Message)"
-    }
-    $missingHashes += $h
-  }
-
-  Start-Sleep -Milliseconds 400  # small delay to respect API rate limits
-}
-
-if ($validHashes.Count -eq 0) {
-  Write-Error "None of the provided hashes are valid / accessible in VT. Exiting."
-  exit 1
-}
-
-Write-Host ("Validation summary: Total:{0}  Valid:{1}  Skipped:{2}" -f $hashes.Count, $validHashes.Count, $missingHashes.Count) -ForegroundColor Green
-
 # ---------- 1) Create the ZIP job ----------
 $createUri = "https://www.virustotal.com/api/v3/intelligence/zip_files"
 
-Write-Host "Submitting $($validHashes.Count) valid hashes to VT to build a password-protected ZIP..." -ForegroundColor Cyan
+Write-Host "Submitting hash to VT to build a password-protected ZIP..." -ForegroundColor Cyan
 
 try {
   $createResp = VT-POST -Uri $createUri -Headers $headers -BodyObject @{
     data = @{
       password = $ZipPassword
-      hashes   = $validHashes
+      hashes   = $sha256
     }
   }
 } catch {

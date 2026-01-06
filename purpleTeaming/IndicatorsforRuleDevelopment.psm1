@@ -3,7 +3,7 @@ function Get-IndicatorsforRuleDevelopment{
     #region --- Configuration ---
     Import-Module -Name ".\purpleTeaming\checkIndicatorsForStats.psm1"
     # Define variables
-    $apiToken = Get-Secret -Name 'S1_API_Key' -AsPlainText
+    $apiToken = Get-Secret -Name 'S1_API_Key_2' -AsPlainText
     $pollingInterval = 1 # Interval in seconds to check the status of the query
     $baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
     # MODIFIED: Added paths for baseline and output files
@@ -28,7 +28,7 @@ if ($hostName -eq ""){
 #Time Prompt
 $result = $null
   do {
-    $s = Read-Host -Prompt 'Enter date or leave blank for today, Ex: 2024-02-24 or 2024-02-24 02:24:24'
+    $s = Read-Host -Prompt 'Enter date or leave blank for today, Ex: 2025-02-25 or 2025-02-25 02:25:25'
     if ( $s ) {
       try {
         $result = Get-Date $s

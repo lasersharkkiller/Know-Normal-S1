@@ -8,13 +8,18 @@ function Get-FileFromS1{
         $pollingInterval,
         $queryDays,
         $newHash,
-        $accountid
+        $accountid,
+        $type = $null
     )
 
 Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 Write-Host "newHash: $($newHash)" -ForegroundColor Cyan
 # Define variables
-$query = "src.process.image.sha256 = '$newHash' | columns src.process.name, agent.uuid, src.process.image.path, account.id, src.process.image.size, agent.version | group procCount = estimate_distinct (agent.uuid) by src.process.name, agent.uuid, src.process.image.path, account.id, src.process.image.size, agent.version | sort -agent.version| limit 200"
+if ($type -eq "driver") {
+        $query = "tgt.file.sha256  = '$newHash' | columns driver.serviceName, agent.uuid, tgt.file.path, account.id, tgt.file.size, agent.version | group procCount = estimate_distinct (agent.uuid) by driver.serviceName, agent.uuid, tgt.file.path, account.id, tgt.file.size, agent.version | sort -agent.version| limit 200"
+} else {
+    $query = "src.process.image.sha256 = '$newHash' | columns src.process.name, agent.uuid, src.process.image.path, account.id, src.process.image.size, agent.version | group procCount = estimate_distinct (agent.uuid) by src.process.name, agent.uuid, src.process.image.path, account.id, src.process.image.size, agent.version | sort -agent.version| limit 200"
+}
 $now = (Get-Date)
 $currentTime = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $lastDayTime = $now.AddDays($queryDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -89,21 +94,29 @@ $targetVersion = [version]"24.1"
         #The Power Query sorts by -agent.version, so if the first one is less than 24.1 they all are
         Write-Host "This file is above 30MB and only agents below 24.1, which calculates the incorrect hash. Skipping for now." -Foregroundcolor Yellow
     } else {
-        #We might get a bunch of instances, set our max attempts to 5
+        #After getting through a bit chunk of baseline, upping the limits significantly; Note powerquery limit is 200 for api calls
         $currentHost = 0
-        if ($hashCount -gt 4) {
-            $hashCount = 4
+        if ($hashCount -gt 99) {
+            $hashCount = 99
         }
 
         while ($currentHost -lt $hashCount) {
         
         if ($currentHost -lt $hashCount) {
-            Write-Host "Attempting $($currentHost) of $($hashCount). Capped at 5 per hash."
+            Write-Host "Attempting $($currentHost) of $($hashCount). Capped at 100 per hash."
             $agentuuid = $statusResponse.data.data[$currentHost][1]
             $imagePath = $statusResponse.data.data[$currentHost][2]
             $accountId = $statusResponse.data.data[$currentHost][3]
             $srcProcImageSize = $statusResponse.data.data[$currentHost][4]
             $agentVersion = $statusResponse.data.data[$currentHost][5]
+
+            # --- Sometimes File Pathes Use \Device\HarddiskVolumeX\ Instead of C:\ ---
+            if ($imagePath -match "^\\Device\\") {
+                # Replaces '\Device\HarddiskVolumeX' with 'C:'
+                $imagePath = $imagePath -replace "^\\Device\\HarddiskVolume\d+", "C:"
+                Write-Host "Converted Device path to: $imagePath" -ForegroundColor Cyan
+            }
+            # -------------------------
 
             $findOtherAccountId = "https://usea1-equifax.sentinelone.net/web/api/v2.1/agents?accountIds=$accountId&uuid=$agentuuid"
             $idResponse = Invoke-RestMethod -Uri $findOtherAccountId -Method Get -Headers $headers

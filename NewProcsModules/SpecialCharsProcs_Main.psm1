@@ -1,76 +1,79 @@
-function Get-SpecificProcPQ{
+function Get-SpecialCharsProcs{
 
-    param (
-        [Parameter(Mandatory=$true)]
-        $headers,
-        $baseUrl,
-        $queryCreateUrl,
-        $pollingInterval,
-        $queryDays,
-        $procName
-    )
-
+Import-Module -Name ".\NewProcsModules\SpecialCharsProcRecent.psm1"
+Import-Module -Name ".\NewProcsModules\Intezer_Analyze_By_Hash.psm1"
+Import-Module -Name ".\NewProcsModules\S1PullFile.psm1"
+Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
+Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
+Import-Module -Name ".\NewProcsModules\PullFromVT.psm1"
 
 # Define variables
-#I am limiting my baseline to less than 30MB for now, bc anything 30MB+ S1 does not calculate the hash correctly for
-#Note I am also excluding purple scope
-$query = "src.process.name = '$procName' and src.process.image.sha256 matches '.' and NOT (src.process.name matches ('.rbf$','.tmp') or site.name contains 'purple') | columns src.process.name, src.process.signedStatus,  src.process.image.sha256, src.process.verifiedStatus, endpoint.os, src.process.publisher  | group procCount = count (src.process.name) by src.process.name, src.process.signedStatus, src.process.image.sha256, src.process.verifiedStatus, endpoint.os, src.process.publisher | sort +procCount | limit 10000"
-$now = (Get-Date)
-$currentTime = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$lastDayTime = $now.AddDays($queryDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$apiToken = Get-Secret -Name 'S1_API_Key' -AsPlainText
+$baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
+$queryCreateUrl = "$baseUrl/dv/events/pq"
 
-# Define the payload for the Power query
-$params = @{
-    "query" = $query
-    'fromDate' = "$($lastDayTime)"
-    'toDate' = "$($currentTime)"
+$pollingInterval = 1 # Interval in seconds to check the status of the query
+$queryDays = -3 #How far back the query checks for new processes
 
-} | ConvertTo-Json
-
-# Step 1: Create the Power query
-$specificProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
-
-if ($specificProcResponse -ne $null -and $specificProcResponse.data.queryId) {
-    $queryId = $specificProcResponse.data.queryId
-    Write-Output "Proc Query created successfully with Query ID: $queryId"
-} else {
-    Write-Output -ForegroundColor red "Failed to create the query. Please check your API token, endpoint, and query."
-    continue
+# Set up headers for authentication and content type
+$headers = @{
+    'Authorization' = "ApiToken $apiToken"
+    'Content-Type' = 'application/json'
 }
 
-# Step 2: Poll the query status until it's complete
-$queryStatusUrl = "$baseUrl/dv/events/pq-ping?queryId=$($queryId)"
+#Unverified Procs  ###API LIMIT IS 1,000
+#Get-UnverifiedProcsBaseline -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays
 
-$status = 'running'
-while ($status -ne 'FINISHED') {
-    try {
-        $statusResponse = Invoke-RestMethod -Uri $queryStatusUrl -Method Get -Headers $headers
-    }
-    catch {
-        Write-Host -ForegroundColor red "Could not poll S1, S1 API Issues. Trying again."
-        $specificProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
+Get-SpecialCharsProcsRecent -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays
 
-        
-        if ($specificProcResponse -ne $null -and $specificProcResponse.data.queryId) {
-            $queryId = $specificProcResponse.data.queryId
-            Write-Output "Process Query (Recent) created successfully with Query ID: $queryId"
-        } else {
-            Write-Output -ForegroundColor red "Failed to create the query. Please check your API token, endpoint, and query."
-            continue
+#Unverified Differential
+$unverifiedProcsBaseline = Get-Content output\unverifiedProcsBaseline.json | ConvertFrom-Json
+$verifiedProcsBaseline = Get-Content output\signedVerifiedProcsBaseline.json | ConvertFrom-Json
+$specialCharsProcsRecent = Get-Content output\specialCharProcRecent.json | ConvertFrom-Json
+
+foreach ($specialCharsProcRecent in $specialCharsProcsRecent){
+    foreach ($unvProcBaseline in $unverifiedProcsBaseline){
+        if($specialCharsProcRecent.value[2] -eq $unvProcBaseline.value[2]){
+            $specialCharsProcRecent.value[-1] = 8675309
         }
     }
-    $status = $statusResponse.data.status
-    $progress = $statusResponse.data.progress
-    Write-Output "Current query progress: $progress"
-    Start-Sleep -Seconds $pollingInterval
 }
 
-# Step 3: Once the status is finished, retrieve the results
-if ($status -eq 'FINISHED') {
-    Write-Output "Query completed successfully."
-    $statusResponse.data.data | ConvertTo-Json | Out-File "output\specificProcQuery.json"
-} else {
-    Write-Output "Query failed or was cancelled. Final status: $status"
+foreach ($specialCharsProcRecent in $specialCharsProcsRecent){
+    foreach ($vProcBaseline in $verifiedProcsBaseline){
+        if($specialCharsProcRecent.value[2] -eq $vProcBaseline.value[2]){
+            $specialCharsProcRecent.value[-1] = 8675309
+        }
+    }
+}
+
+$filteredSCProcs = $specialCharsProcsRecent | Where-Object {$_.value[-1] -ne 8675309}
+Write-Host ($filteredSCProcs | Out-String) -ForegroundColor Cyan
+
+foreach ($newProc in $filteredSCProcs){
+    $fileName = $newProc.value[0]
+    $verifiedStatus = $newProc.value[1]
+    $newHash = $newProc.value[2]
+    $publisher = $newProc.value[3]
+    [bool]$pullFileFromS1 = $false
+    [bool]$pullFileFromVT = $false
+
+    #first check if it already exists in Intezer
+    if ($verifiedStatus -eq "unverified") {
+        $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\unverifiedProcsBaseline.json" -signatureStatus "unverified" -publisher $publisher -ErrorAction silentlycontinue
+    } else {
+        $pullFileFromS1 = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\signedVerifiedProcsBaseline.json" -signatureStatus "signedVerified" -publisher $publisher -ErrorAction silentlycontinue
+    }
+    #if it's not in intezer, first try VT (before pulling with S1 - more efficient)
+    if ($pullFileFromS1 -eq $false){
+        $pullFileFromVT = Get-PullFromVT -Sha256 $newHash -fileName $fileName -ErrorAction silentlycontinue
+    }
+    
+    if ($pullFileFromS1 -eq $false -and $pullFileFromVT -eq $false){
+        $agentId = Get-FileFromS1 -headers $headers -baseUrl $baseUrl -queryCreateUrl $queryCreateUrl -pollingInterval $pollingInterval -queryDays $queryDays -newHash $newHash -ErrorAction silentlycontinue
+    } else {
+        continue
+    }
 }
 
 }

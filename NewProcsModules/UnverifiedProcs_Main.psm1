@@ -5,7 +5,6 @@ Import-Module -Name ".\NewProcsModules\UnverifiedProcRecent.psm1"
 Import-Module -Name ".\NewProcsModules\Intezer_Analyze_By_Hash.psm1"
 Import-Module -Name ".\NewProcsModules\S1PullFile.psm1"
 Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
-Import-Module -Name ".\NewProcsModules\S1GetActivities.psm1"
 Import-Module -Name ".\NewProcsModules\PullFromVT.psm1"
 
 # Define variables
@@ -14,7 +13,7 @@ $baseUrl = 'https://usea1-equifax.sentinelone.net/web/api/v2.1'
 $queryCreateUrl = "$baseUrl/dv/events/pq"
 
 $pollingInterval = 1 # Interval in seconds to check the status of the query
-$queryDays = -1 #How far back the query checks for new processes
+$queryDays = -3 #How far back the query checks for new processes
 
 # Set up headers for authentication and content type
 $headers = @{

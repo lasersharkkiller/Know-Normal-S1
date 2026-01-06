@@ -2,7 +2,7 @@ function Get-MispPull{
 
 Set-Variable -Name "dedupedBlockList" -Scope Global
 #Download the blocklist
-$mispBlocklistURL = "http://site/ip_blocklist.txt"
+$mispBlocklistURL = "http://cyberautomation.npe.sec.us-use1.gcp.efx/ip_blocklist.txt"
     try {
         $mispBlocklist = Invoke-WebRequest -Uri $mispBlocklistURL -ErrorAction Stop
         #save to a local file bc it doesn't process this list as a proper array

@@ -26,7 +26,7 @@ function Get-FileUnzip {
         if ($itemsInDirectory.Count -eq 2 -and $manifestFile.Count -eq 1 -and $zipFiles.Count -eq 1) {
             Write-Host "The unzipped file only contains manifest.json." -ForegroundColor Yellow
             $itemsInDirectory | Remove-Item -Recurse -Force
-            $wasEmpty = $True
+            $global:wasEmpty = $True
             return
         }
         else {

@@ -36,7 +36,7 @@ while ($newActivityResponse.data.primaryDescription -notmatch "successfully uplo
     $newActivityResponse = Invoke-RestMethod -Uri $activityURL -Method Get -Headers $S1GetActivitiesheaders
     $retryCount++
     if ($retryCount -ge $maxRetries) {
-        $wasEmpty = $True
+        $global:wasEmpty = $True
         return
     }
 }
@@ -69,7 +69,7 @@ if ($newActivityResponse.data.primaryDescription -match "successfully uploaded")
     Clear-Variable $newActivityResponse
     return
 } else {
-    $wasEmpty = $True
+    $global:wasEmpty = $True
     return
 }
 }

@@ -1,4 +1,4 @@
-function Get-SpecialCharsProcsRecent{
+function Get-driversMinusBenignExcluded_Recent{
 
     param (
         [Parameter(Mandatory=$true)]
@@ -9,10 +9,7 @@ function Get-SpecialCharsProcsRecent{
         $queryDays
     )
 
-
-# Define variables
-#
-$query = "src.process.publisher matches '[^\\x00-\\x7F]' and NOT (site.name contains 'purple')| columns src.process.name, src.process.verifiedStatus, src.process.image.sha256, src.process.publisher | group pubCount = count (src.process.publisher) by src.process.name, src.process.verifiedStatus, src.process.image.sha256, src.process.publisher | sort +pubCount | limit 10000"
+$query = "driver.loadVerdict matches '.' and NOT (driver.loadVerdict in ('BENIGN','EXCLUDED'))| columns driver.serviceName, driver.loadVerdict, tgt.file.sha256, driver.certificate.thumbprint | group procCount = estimate_distinct (driver.serviceName) by driver.serviceName, driver.loadVerdict, tgt.file.sha256, driver.certificate.thumbprint | sort +driver.serviceName | limit 10000"
 $now = (Get-Date)
 $currentTime = $now.AddDays(0).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $lastDayTime = $now.AddDays($queryDays).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -26,10 +23,10 @@ $params = @{
 } | ConvertTo-Json
 
 # Step 1: Create the Power query
-$specialCharProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
+$driverResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
 
-if ($specialCharProcResponse -ne $null -and $specialCharProcResponse.data.queryId) {
-    $queryId = $specialCharProcResponse.data.queryId
+if ($driverResponse -ne $null -and $driverResponse.data.queryId) {
+    $queryId = $driverResponse.data.queryId
     Write-Output "Unverified Proc Query created successfully with Query ID: $queryId"
 } else {
     Write-Output -ForegroundColor red "Failed to create the query. Please check your API token, endpoint, and query."
@@ -45,12 +42,12 @@ while ($status -ne 'FINISHED') {
     }
     catch {
         Write-Host -ForegroundColor red "Could not poll S1, S1 API Issues. Trying again."
-        $specialCharProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
+        $driverResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
 
         
-        if ($specialCharProcResponse -ne $null -and $specialCharProcResponse.data.queryId) {
-            $queryId = $specialCharProcResponse.data.queryId
-            Write-Output "Unverified Process Query (Recent) created successfully with Query ID: $queryId"
+        if ($driverResponse -ne $null -and $driverResponse.data.queryId) {
+            $queryId = $driverResponse.data.queryId
+            Write-Output "Driver Query (Recent) created successfully with Query ID: $queryId"
         } else {
             Write-Output -ForegroundColor red "Failed to create the query. Please check your API token, endpoint, and query."
             continue
@@ -66,7 +63,7 @@ while ($status -ne 'FINISHED') {
 # Step 3: Once the status is finished, retrieve the results
 if ($status -eq 'FINISHED') {
     Write-Output "Query completed successfully."
-    $statusResponse.data.data | ConvertTo-Json | Out-File "output\specialCharProcRecent.json"
+    $statusResponse.data.data | ConvertTo-Json | Out-File "output\driversRecent.json"
 } else {
     Write-Output "Query failed or was cancelled. Final status: $status"
 }

@@ -45,7 +45,9 @@ while ($status -ne 'FINISHED') {
         $statusResponse = Invoke-RestMethod -Uri $queryStatusUrl -Method Get -Headers $headers
     }
     catch {
-        Write-Host -ForegroundColor red "Could not poll S1, S1 API Issues. Trying again."
+        Write-Host -ForegroundColor red "Could not poll S1, S1 API Issues. Waiting, then moving on."
+        Start-Sleep -Seconds 60
+        break
         $WinPubProcResponse = Invoke-RestMethod -Uri $queryCreateUrl -Method Post -Headers $headers -Body $params
         
         if ($WinPubProcResponse -ne $null -and $WinPubProcResponse.data.queryId) {
@@ -67,6 +69,20 @@ while ($status -ne 'FINISHED') {
 if ($status -eq 'FINISHED') {
     Write-Output "$($publisher) process SHA-256's:"
     Write-Host $statusResponse.data.data
+    
+    $newHash = $statusResponse.data.data[0][0]
+    $fileName = $statusResponse.data.data[0][1]
+    Write-Host "Hash Check: $($newHash)"
+    Write-Host "Filename Check: $($fileName)"
+    $tryNextPull = $false
+
+    #first check if it already exists in Intezer
+    $tryNextPull = Get-IntezerHash -checkHash $newHash -fileName $fileName -baseline "output\signedVerifiedProcsBaseline.json" -signatureStatus "SignedVerified" -publisher $publisher -ErrorAction silentlycontinue
+    #if it's not in intezer, first try VT (before pulling with S1 - more efficient)
+    if ($tryNextPull -eq $false){
+        $pullFileFromVT = Get-PullFromVT -Sha256 $newHash -fileName $fileName -ErrorAction silentlycontinue
+    }
+    #Normally if it wasn't in either next we would try to pull with S1, but for efficiency do separately with named process
 } else {
     Write-Output "Query failed or was cancelled. Final status: $status"
 }

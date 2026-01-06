@@ -1,4 +1,4 @@
-function Get-PullFromVT{
+function Get-PullFromVT {
 
 param (
     [Parameter(Mandatory)][string]$Sha256,
@@ -6,7 +6,7 @@ param (
     [string]$OutputFolder = "files"
 )
 
-$VTApi = Get-Secret -Name 'VT_API_Key_3' -AsPlainText
+$VTApi = Get-Secret -Name 'VT_API_Key_1' -AsPlainText
 
 # Ensure output folder exists
 if (-not (Test-Path $OutputFolder)) {
@@ -17,16 +17,47 @@ if (-not (Test-Path $OutputFolder)) {
 $downloadUrl = "https://www.virustotal.com/intelligence/download/?hash=$Sha256&apikey=$VTApi"
 $outputFile = Join-Path $OutputFolder "$($fileName)"
 
+# --- NEW LOGIC: Check for Name Collision and Hash Comparison ---
+if (Test-Path $outputFile) {
+    try {
+        # Get hash of the existing local file
+        $existingHash = (Get-FileHash -Path $outputFile -Algorithm SHA256).Hash
+
+        # Compare existing hash with the requested hash (Case-insensitive)
+        if ($existingHash -ne $Sha256) {
+            # Hashes are DIFFERENT: Rename the new file to avoid overwriting the different existing file
+            $count = 1
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+            $extension = [System.IO.Path]::GetExtension($fileName)
+            
+            # Loop until we find a filename that doesn't exist
+            do {
+                $newFileName = "{0} ({1}){2}" -f $baseName, $count, $extension
+                $newFullPath = Join-Path $OutputFolder $newFileName
+                $count++
+            } while (Test-Path $newFullPath)
+            
+            # Update the output file path to the new unique name
+            $outputFile = $newFullPath
+            Write-Host "File with same name but different hash detected. Renaming download to: $($newFileName)"
+        } else {
+            # Hashes are the SAME: Proceed to overwrite as requested
+            Write-Host "File with same name and hash detected. Overwriting..."
+        }
+    }
+    catch {
+        Write-Warning "Could not calculate hash of existing file. Proceeding with overwrite."
+    }
+}
+# ----------------------------------------------------------------
+
 try {
     # Attempt to download the file
-    #Invoke-WebRequest -Uri $downloadUrl -OutFile $outputFile -ErrorAction Stop
-    
     #Invoke-WebRequest was super slow
-    $startDownload = Start-Process curl.exe -ArgumentList "--fail --ssl-no-revoke -L $downloadUrl -o $outputFile" -NoNewWindow -Wait -PassThru
-    #Write-Host "Start-Process curl.exe -ArgumentList --ssl-no-revoke -L " $downloadUrl " -o " $outputFile " -NoNewWindow -Wait -PassThru"
+    $startDownload = Start-Process curl.exe -ArgumentList "--fail --ssl-no-revoke -L $downloadUrl -o `"$outputFile`"" -NoNewWindow -Wait -PassThru
+    # Note: Added quotes around $outputFile in ArgumentList to handle spaces in filenames safely
 
-    if ((Test-Path $outputFile) -and ((Get-Item $outputFile).Length -gt 0)) {   #This was for Invoke-WebRequest
-    #if($startDownload.ExitCode -eq 0 -and (Test-Path $outputFile)) { #This was for curl
+    if ((Test-Path $outputFile) -and ((Get-Item $outputFile).Length -gt 0)) {   
         Write-Host "File downloaded: $outputFile"
         return $true
     } else {

@@ -2,7 +2,7 @@ function Get-BlockedCountryList{
 
 Set-Variable -Name "countryBlockListGlobal"
 #Download the blocklist
-$countryBlocklistURL = "https://misp-site.com/ips_blocked_countries.txt"
+$countryBlocklistURL = "https://cyber.sec.equifax.com/ips_blocked_countries.txt"
     try {
         $countryBlocklist = Invoke-WebRequest -Uri $countryBlocklistURL -ErrorAction Stop
         #save to a local file bc it doesn't process this list as a proper array

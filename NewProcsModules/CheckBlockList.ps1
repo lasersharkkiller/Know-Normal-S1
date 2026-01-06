@@ -1,4 +1,4 @@
-#http://cyber.sec.REDACTED_COMPANY.com/ip_blocklist.txt
+﻿#http://cyber.sec.REDACTED_COMPANY.com/ip_blocklist.txt
 
 Import-Module -Name ".\CheckIpsAgainstVT.psm1"
 
